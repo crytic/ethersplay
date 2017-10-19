@@ -234,7 +234,7 @@ class StackValueAnalysis(object):
                 self.discovered_targets[src] = set()
             self.discovered_targets[src].add(dst)
             ## Add the next instruction as target, as JUMPI
-            dst = src + 2
+            dst = src + 1
             if src not in self.discovered_targets:
                 self.discovered_targets[src] = set()
             self.discovered_targets[src].add(dst)
