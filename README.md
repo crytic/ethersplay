@@ -8,10 +8,7 @@ EVM dissassembler and analyzes
 - [Known issues](#known-issues)
 
 ## Installation:
-Copy and paste the `ethersplay` directory to the binary ninja [plugin folder](https://github.com/Vector35/binaryninja-api/tree/dev/python/examples#loading-plugins).
-
-
-Alternatively, you can create a symbolic link to the respective directory.
+Create a symbolic link to the binary ninja [plugin folder](https://github.com/Vector35/binaryninja-api/tree/dev/python/examples#loading-plugins).
 E.g., in Mac OS X
 ```
 cd ~/Library/Application\ Support/Binary\ Ninja
