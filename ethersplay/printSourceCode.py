@@ -33,8 +33,6 @@ class PrintSourceCode(object):
                 if prev_txt != txt:
                     prev_txt = txt
                     self.current_func.set_comment(addr, txt)
-            else:
-                print "Not found " +hex(addr)
             (_, size) = ins
             addr += size
 

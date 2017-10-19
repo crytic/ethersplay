@@ -47,13 +47,9 @@ solc --asm-json examples/test.sol > examples/test.asm.json
 ```
 The source code file has to be in the same directory than the `*.asm.json` file.
 
-### EVM Bindiff
-Find the difference between two bytecodes.
-
 ### Manticore coverage
 Color the basic blocks explored through Manticore (using the `visited.txt` file).
 
 ## Known issues
 - Opening more than one bytecode file generates the wrong CFG
 - `EVM Source Code` was tested with solc 0.4.16. It is not compatible with other versions.
-- `EVM Bindiff` is a work in progress. It contains several bugs.
