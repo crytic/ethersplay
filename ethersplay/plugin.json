@@ -1,0 +1,15 @@
+{
+	"plugin": {
+		"name": "Ethereum Architecture Plugin",
+		"type": ["architecture"],
+		"api": "python2",
+		"description": "A disassembler and lifter for the Ethereum architecture.",
+		"longdescription": "This plugin disassembles Ethereum assembly code.\n",
+		"version": "0.1",
+		"author": "",
+		"minimumBinaryNinjaVersion": {
+			"release (Personal)": "1.0.13",
+			"release (Commercial)": "1.0.320"
+		}
+	}
+}
