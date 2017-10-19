@@ -1,6 +1,8 @@
 # ethersplay
 EVM dissassembler and related analysis tools.
 
+![Example](/images/example.png)
+
 - [Installation](#installation)
 - [How to use](#how-to-use)
 - [Automatic Analyses](#automatic-analyses)
