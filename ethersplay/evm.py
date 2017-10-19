@@ -311,46 +311,19 @@ class EVM(Architecture):
         result = InstructionInfo()
         result.length = instruction.size
 
-        prev_push = getattr(self, 'prev_push', (None, None))
-        (prev_push_addr, prev_push_dst) = prev_push
-
         # Add branches
         if instruction.name in ['RETURN']:
             result.add_branch(BranchType.FunctionReturn)
         elif instruction.name in ['REVERT', 'SUICIDE', 'INVALID', 'STOP']:
             result.add_branch(BranchType.UnresolvedBranch)
-        elif instruction.name in ['JUMP']:
-            resolved_address = None
-            addr_prev = addr - 2  # size of push1 opcode
-            if addr_prev == prev_push_addr:
-                resolved_address = prev_push_dst
-            addr_prev = addr - 3  # size of push2 opcode
-            if addr_prev == prev_push_addr:
-                resolved_address = prev_push_dst
-            if resolved_address is None:
-                result.add_branch(BranchType.UnresolvedBranch)
-            else:
-                result.add_branch(BranchType.UnconditionalBranch,
-                                  resolved_address)
         elif instruction.name in ['JUMPI']:
-            resolved_address = None
-            addr_prev = addr - 2  # size of push1 opcode
-            if addr_prev == prev_push_addr:
-                resolved_address = prev_push_dst
-            addr_prev = addr - 3 # size of push2 opcode
-            if addr_prev == prev_push_addr:
-                resolved_address = prev_push_dst
-            if resolved_address is None:
-                result.add_branch(BranchType.UnresolvedBranch)
-            else:
-                result.add_branch(BranchType.TrueBranch, resolved_address)
-            result.add_branch(BranchType.FalseBranch, addr + instruction.size)
+            result.add_branch(BranchType.UnresolvedBranch)
+        elif instruction.name in ['JUMP']:
+            result.add_branch(BranchType.UnresolvedBranch)
             # TODO binja crash on some calls instruction, inspect this_
        # elif instruction.name in ['CALL', 'CALLCODE', 'DELEGATECALL']:
             #print BranchType.CallDestination
             #  result.add_branch(BranchType.CallDestination, None)
-        elif instruction.semantics == 'PUSH':
-            self.prev_push = (addr, instruction.operand)
         return result
 
     def perform_get_instruction_text(self, data, addr):

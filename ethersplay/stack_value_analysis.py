@@ -181,7 +181,7 @@ class StackValueAnalysis(object):
                 else:
                     stack.append(None)
             # Record the last value used by the jump
-            elif op == 'JUMP':
+            elif op == 'JUMP' or op == 'JUMPI':
                 last_jump = stack[-1]
                 stack = stack[:-1]
             # For all the other opcode: remove
@@ -216,9 +216,9 @@ class StackValueAnalysis(object):
 
         # check if the last instruction is a JUMP
         item = bb.__iter__()
-        # FIXME same as item = bb[-1]?
         for ins in item:
             pass
+
 
         op = str(ins[0][0]).replace(' ', '')
         if op == 'JUMP':
@@ -227,6 +227,19 @@ class StackValueAnalysis(object):
             if src not in self.discovered_targets:
                 self.discovered_targets[src] = set()
             self.discovered_targets[src].add(dst)
+        if op == 'JUMPI':
+            src = bb.end-1
+            dst = long(str(last_jump), 16)
+            if src not in self.discovered_targets:
+                self.discovered_targets[src] = set()
+            self.discovered_targets[src].add(dst)
+            ## Add the next instruction as target, as JUMPI
+            dst = src + 2
+            if src not in self.discovered_targets:
+                self.discovered_targets[src] = set()
+            self.discovered_targets[src].add(dst)
+
+
 
     def explore(self, bb):
         """The result of the analysis is in self.discovered_targets
