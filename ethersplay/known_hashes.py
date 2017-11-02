@@ -1,4 +1,5 @@
 knownHashes = {
+    '0xf10fdf5c' : 'getContribution()',
     '0x1003e2d2': 'add(uint256)',
     '0xd8f9e51b': 'EkoBeerCoin()',
     '0x7471f6f6': 'buy_beer(uint256,uint256)',
