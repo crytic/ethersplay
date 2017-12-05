@@ -13,13 +13,19 @@ EVM dissassembler and related analysis tools.
 Create a symbolic link to the Binary Ninja [plugin folder](https://github.com/Vector35/binaryninja-api/tree/dev/python/examples#loading-plugins).
 E.g., in macOS
 ```
-cd ~/Library/Application\ Support/Binary\ Ninja
+cd ~/Library/Application\ Support/Binary\ Ninja/plugins
 ln -s <your_download_location>/ethersplay/ethersplay .
 ```
 
 ## How to Use
 
-The file has to contain the bytecode in raw format. You can convert the text representation of the bytecode using `utils/convert_bytecode.py`:
+Ethersplay takes as input the evm bytecode in raw format.
+ 
+To have the bytecode of a solidity file, use solc:
+- `solc --bin-runtime file.sol`: to print the bytecode of the runtime part of the contract (for most of the cases).
+- `solc --bin file.sol`: to print the initialisation bytecode of the contract (constructor),
+
+To convert the text representation of the bytecode, use `utils/convert_bytecode.py`:
 ```bash
 $ cat examples/test.evm
 60606040526000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063448f30a314610049578063b61d27f61461005e575b600080fd5b341561005457600080fd5b61005c6100d0565b005b341561006957600080fd5b6100b2600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091908035906020019091908035906020019082018035906020019190919290505061013b565b60405180826000191660001916815260200191505060405180910390f35b7ff9fbd55454309325ccadd998a641a1dfe7cd888eea26c0ae93b95992a13ac1446040518080602001828103825260078152602001807f6e6f7468696e670000000000000000000000000000000000000000000000000081525060200191505060405180910390a15b565b600061017a600161016c343073ffffffffffffffffffffffffffffffffffffffff163161024490919063ffffffff16565b61025e90919063ffffffff16565b5060008383905014156101de578473ffffffffffffffffffffffffffffffffffffffff168484846040518083838082843782019150509250505060006040518083038185876187965a03f19250505015156101d457600080fd5b61023c565b61023b565b84600080836000191660001916815260200190815260200160002060000160006101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505b5b949350505050565b600082821115151561025257fe5b81830390505b92915050565b600082821115151561026c57fe5b81830390505b929150505600a165627a7a72305820810579e0bc6d4b9345e309d56903d908914fafd2efc0f606473377675a3347100029
