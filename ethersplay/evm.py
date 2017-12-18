@@ -1,158 +1,14 @@
+from manticore.platforms.evm import EVMAsm
 import traceback
 import time
 import threading
 
 from binaryninja import *
-from manticore_evm import *
-
 from create_methods import CreateMethods
 from print_known_hashes import HashMatcher
 from stack_value_analysis import function_dynamic_jump_start
 
 ADDR_SZ = 4
-
-InstructionGas = {
-    'STOP' : 0,
-    'ADD' : 3,
-    'MUL' : 5,
-    'SUB' : 3,
-    'DIV' : 2,
-    'SDIV' : 5,
-    'MOD' : 5,
-    'SMOD' : 5,
-    'ADDMOD' : 8,
-    'MULMOD' : 8,
-    'EXP' : 10,
-    'SIGNEXTEND' : 5,
-    'LT' : 3,
-    'GT' : 3,
-    'SLT' : 3,
-    'SGT' : 3,
-    'EQ' : 3,
-    'ISZERO' : 3,
-    'AND' : 3,
-    'OR' : 3,
-    'XOR' : 3,
-    'NOT' : 3,
-    'BYTE' : 3,
-    'SHA3' : 30,
-    'ADDRESS' : 2,
-    'BALANCE' : 20,
-    'ORIGIN' : 2,
-    'CALLER' : 2,
-    'CALLVALUE' : 2,
-    'CALLDATALOAD' : 3,
-    'CALLDATASIZE' : 2,
-    'CALLDATACOPY' : 3,
-    'CODESIZE' : 2,
-    'CODECOPY' : 3,
-    'GASPRICE' : 2,
-    'EXTCODESIZE' : 20,
-    'EXTCODECOPY' : 20,
-    'BLOCKHASH' : 20,
-    'COINBASE' : 2,
-    'TIMESTAMP' : 2,
-    'NUMBER' : 2,
-    'DIFFICULTY' : 2,
-    'GASLIMIT' : 2,
-    'POP' : 2,
-    'MLOAD' : 3,
-    'MSTORE' : 3,
-    'MSTORE8' : 3,
-    'SLOAD' : 50,
-    'SSTORE' : 0,
-    'JUMP' : 8,
-    'JUMPI' : 10,
-    'PC' : 2,
-    'MSIZE' : 2,
-    'GAS' : 2,
-    'JUMPDEST' : 1,
-    'ALL_PUSH' : 3,
-    'ALL_DUP' : 3,
-    'ALL_SWAP': 3,
-    'PUSH' : 1875,
-    'DUP' : 1875,
-    'SWAP' : 1875,
-    'CREATE' : 32000,
-    'CALL' : 40,
-    'CALLCODE' : 40,
-    'RETURN' : 0,
-    'SELFDESTRUCT' : 0,
-    'DELEGATECALL' : 40,
-    'SUICIDE' : 0
-}
-
-# TODO: for now we remove the IL transformation
-
-#def cond_branch(il, addr):
-#
-#    t = LowLevelILLabel()
-#
-#    if addr is None:
-#        f = LowLevelILLabel()
-#    else:
-#        f = il.get_label_for_address(Architecture['evm'], addr + 1)
-#        if f is None:
-#            f = LowLevelILLabel()
-#
-#    # We need to use a temporary register here. The il.if_expr() helper
-#    # function makes a tree and evaluates the
-#    # condition's il.pop(ADDR_SZ) first, but dest needs to be first.
-#    dest = il.pop(ADDR_SZ)
-#    il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), dest))
-#
-#    cond = il.compare_equal(ADDR_SZ, il.pop(ADDR_SZ), il.const(ADDR_SZ, 0))
-#
-#    il.append(il.if_expr(cond, t, f))
-#
-#    il.mark_label(t)
-#    il.append(il.jump(il.reg(ADDR_SZ, LLIL_TEMP(0))))
-#
-#    il.mark_label(f)
-#    # false is the fall through case
-#    return None
-#
-#def label(il, addr):
-#    f = il.get_label_for_address(Architecture['evm'], addr)
-#    if f is None:
-#        f = LowLevelILLabel()
-#    il.append(il.nop())
-#    il.mark_label(f)
-#
-#def dup(il, a):
-#    a_addr = il.add(ADDR_SZ,
-#                    il.reg(ADDR_SZ, 'sp'),
-#                    il.const(ADDR_SZ, a * ADDR_SZ))
-#    a_value = il.load(ADDR_SZ, a_addr)
-#    il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), a_value))
-#    il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, LLIL_TEMP(0))))
-#    return None
-#
-
-#def swap(il, a, b):
-#    sp = il.reg(ADDR_SZ, 'sp')
-#    a_addr = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, (a - 1) * ADDR_SZ))
-#    b_addr = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, (b - 1) * ADDR_SZ))
-#
-#    # Save the old A value
-#    old = il.load(ADDR_SZ, a_addr)
-#    il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), old))
-#
-#    # Copy b to a
-#    il.append(il.store(ADDR_SZ, a_addr, il.load(ADDR_SZ, b_addr)))
-#
-#    # Store old a to b
-#    il.append(il.store(ADDR_SZ, b_addr, il.reg(ADDR_SZ, LLIL_TEMP(0))))
-#
-#    return None
-
-def gas(il, name):
-    price = InstructionGas.get(name, 0)
-    if price == 0:
-        return
-    il.append(il.set_reg(8,
-                         'gas',
-                         il.add(8, il.reg(8, 'gas'), il.const(8, price))))
 
 # d: stack arguments required
 # a: address
@@ -292,18 +148,16 @@ class EVM(Architecture):
     # FIXME
     max_instr_length = ADDR_SZ * 8 + 1
     endianness = Endianness.BigEndian
-    regs = {'sp': RegisterInfo('sp', ADDR_SZ), 'gas' : RegisterInfo('gas', 8)}
+    regs = {'sp': RegisterInfo('sp', ADDR_SZ)}
     stack_pointer = 'sp'
     flags = []
 
     def decode_instruction(self, data, addr):
-        instruction = EVMDecoder.decode_one(data)
+        instruction = EVMAsm.disassemble_one(data)
         return instruction
 
     def perform_get_instruction_info(self, data, addr):
-#        cache = getattr(self, 'cache', {})
- #       setattr(self, 'cache', cache)
-        instruction = EVMDecoder.decode_one(data)
+        instruction = EVMAsm.disassemble_one(data)
 
         if instruction is None:
             return instruction
@@ -327,7 +181,7 @@ class EVM(Architecture):
         return result
 
     def perform_get_instruction_text(self, data, addr):
-        instruction = EVMDecoder.decode_one(data)
+        instruction = EVMAsm.disassemble_one(data)
         if instruction is None:
             return instruction
 
@@ -363,8 +217,6 @@ class EVM(Architecture):
         if insn is None:
             return None
         name = self._get_name(insn.name)
-        # pay the gas upfront
-        gas(il, name)
         # see what we execute
         if InstructionIL.get(name) is None:
             il.append(il.unimplemented())
