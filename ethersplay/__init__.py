@@ -6,6 +6,7 @@ from printSourceCode import function_source_code_start
 
 from coverage import function_coverage_start
 from evm import EVM, EVMView
+from symex import function_symbex
 
 PluginCommand.register("EVM Source Code",
                        "EVM Source Code Printer.",
@@ -14,6 +15,10 @@ PluginCommand.register("EVM Source Code",
 PluginCommand.register("EVM Manticore Highlight",
                        "EVM Manticore Highlight",
                        function_coverage_start)
+
+PluginCommand.register("Manticore Symbex",
+                       "Symbex",
+                       function_symbex)
 
 
 EVM.register()

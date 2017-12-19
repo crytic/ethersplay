@@ -1,3 +1,5 @@
+import utils
+
 class StackValueAnalysis(object):
     # name: (number pop, number push)
     table = {
@@ -264,9 +266,7 @@ def function_dynamic_jump_start(view, func):
             error = True
         new_targets = sv.discovered_targets
         if new_targets != targets_found:
-            for src, dst in new_targets.iteritems():
-                branches = map(lambda x: (func.arch, x), dst)
-                func.set_user_indirect_branches(src, branches)
+            utils.update_branches(view, new_targets.iteritems())
             targets_found = new_targets
             view.update_analysis_and_wait()
         else:
