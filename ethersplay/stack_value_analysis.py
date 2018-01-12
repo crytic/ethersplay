@@ -1,3 +1,4 @@
+
 class StackValueAnalysis(object):
     # name: (number pop, number push)
     table = {
@@ -144,14 +145,17 @@ class StackValueAnalysis(object):
     }
 
 
-    def __init__(self):
+    def __init__(self, func):
         self.stacks = {}
         # discovered_targets: src -> [dst]
         self.discovered_targets = {}
+        self.func = func
 
     def _update_stack(self, bb, stack):
         last_jump = None
-        for (ins, _) in bb.__iter__():
+        addr = bb.start
+        for (ins, size) in bb.__iter__():
+#            self.func.set_comment(addr, "STACK "+ str(stack))
             last_jump = None
             op = str(ins[0]).replace(' ', '')
             # push X: add X to the stack
@@ -161,13 +165,24 @@ class StackValueAnalysis(object):
             elif op.startswith('SWAP'):
                 nth_elem = int(op[4])
                 top = stack[-1]
-                elem = stack[-1-nth_elem]
-                stack[-1] = elem
-                stack[-1-nth_elem] = top
+                if len(stack) >= (nth_elem+1):
+                    elem = stack[-1-nth_elem]
+                    stack[-1] = elem
+                    stack[-1-nth_elem] = top
+                else:
+                    elem = None
+                    stack[-1] = elem
+                    missing_elems = nth_elem - len(stack)  + 1
+                    missing_elems = [None for x in range(0, missing_elems)]
+                    stack = missing_elems + stack
+                    stack[-1-nth_elem] = top
             # dup i: copy the i-th element to the top
             elif op.startswith('DUP'):
                 nth_elem = int(op[3])
-                dup = stack[-nth_elem]
+                if len(stack) >= nth_elem:
+                    dup = stack[-nth_elem]
+                else:
+                    dup = None
                 stack.append(dup)
             # We compute AND X, Y if X Y are integer
             elif op == 'AND':
@@ -180,18 +195,18 @@ class StackValueAnalysis(object):
                     stack.append(hex(v1 & v2))
                 else:
                     stack.append(None)
-            # Record the last value used by the jump
-            elif op == 'JUMP' or op == 'JUMPI':
-                last_jump = stack[-1]
-                stack = stack[:-1]
             # For all the other opcode: remove
             # the pop elements, and push None elements
             else:
+                if op == 'JUMP' or op == 'JUMPI':
+                    last_jump = stack[-1]
                 (n_pop, n_push) = self.table[op]
                 if n_pop:
                     stack = stack[:-n_pop]
                 for _ in xrange(0, n_push):
                     stack.append(None)
+
+            addr += size
 
         return (stack, last_jump)
 
@@ -204,9 +219,9 @@ class StackValueAnalysis(object):
 
         stack = list(father_stack)
 
-        #self.func.set_comment(bb.start, "STACK "+ str(stack))
+#        self.func.set_comment(bb.start, "STACK "+ str(stack))
         (stack, last_jump) = self._update_stack(bb, stack)
-        # self.func.set_comment(bb.end-1, "STACK "+ str(stack))
+#        self.func.set_comment(bb.end-1, "STACK "+ str(stack))
 
         self.stacks[addr] = stack
 
@@ -221,24 +236,26 @@ class StackValueAnalysis(object):
 
 
         op = str(ins[0][0]).replace(' ', '')
-        if op == 'JUMP':
-            src = bb.end-1
-            dst = long(str(last_jump), 16)
-            if src not in self.discovered_targets:
-                self.discovered_targets[src] = set()
-            self.discovered_targets[src].add(dst)
-        if op == 'JUMPI':
-            src = bb.end-1
-            dst = long(str(last_jump), 16)
-            if src not in self.discovered_targets:
-                self.discovered_targets[src] = set()
-            self.discovered_targets[src].add(dst)
-            ## Add the next instruction as target, as JUMPI
-            dst = src + 1
-            if src not in self.discovered_targets:
-                self.discovered_targets[src] = set()
-            self.discovered_targets[src].add(dst)
-
+        try:
+            if op == 'JUMP':
+                src = bb.end-1
+                dst = long(str(last_jump), 16)
+                if src not in self.discovered_targets:
+                    self.discovered_targets[src] = set()
+                self.discovered_targets[src].add(dst)
+            if op == 'JUMPI':
+                src = bb.end-1
+                dst = long(str(last_jump), 16)
+                if src not in self.discovered_targets:
+                    self.discovered_targets[src] = set()
+                self.discovered_targets[src].add(dst)
+                ## Add the next instruction as target, as JUMPI
+                dst = src + 1
+                if src not in self.discovered_targets:
+                    self.discovered_targets[src] = set()
+                self.discovered_targets[src].add(dst)
+        except:
+            pass
 
 
     def explore(self, bb):
@@ -255,13 +272,9 @@ def function_dynamic_jump_start(view, func):
     while True:
         # FIXME (theo) why initialize a new class here-> can we put it
         # outside of the loop?R
-        sv = StackValueAnalysis()
+        sv = StackValueAnalysis(func)
         error = False
-        try:
-            sv.explore(func.basic_blocks[0])
-        except:
-            # error if the analysis does not start at address 0x0
-            error = True
+        sv.explore(func.basic_blocks[0])
         new_targets = sv.discovered_targets
         if new_targets != targets_found:
             for src, dst in new_targets.iteritems():
