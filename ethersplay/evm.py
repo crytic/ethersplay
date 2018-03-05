@@ -390,14 +390,64 @@ class EVMView(BinaryView):
     long_name = "EVM"
 
     def __init__(self, data):
-        BinaryView.__init__(self, file_metadata=data.file, parent_view=data)
-        self.raw = data
+
+        # Check if input is a hexified string
+        self.hexify = False
+        if data.read(0,2) == '0x':
+            buf = view2str(data)[2:].strip().rstrip()
+            buf_set = set()
+            for c in buf:
+                buf_set.update(c)
+            hex_set = set(list('0123456789abcdef'))
+            if buf_set <= hex_set: # subset
+                self.hexify = True
+                self.raw_data = buf.decode('hex')
+
+        if self.hexify:
+            parent_view = None
+        else:
+            parent_view = data
+
+        BinaryView.__init__(self, file_metadata=data.file, parent_view=parent_view)
+        
+        self.data = data
         self.arch = Architecture['evm']
         self.platform = self.arch.standalone_platform
 
+
+    # TODO: implement perform_write
+    #def perform_write(self, addr, data):
+    #    pass
+
+    def perform_read(self, addr, length):
+        if self.hexify:
+            try:
+                the_bytes = self.raw_data[addr:addr+length]
+                return the_bytes
+            except:
+                return None
+        else:
+            return BinaryView.perform_read(self, addr, length)
+
+
+    def perform_is_valid_offset(self, addr):
+        if self.hexify:
+            return addr < len(self.raw_data)
+        else:
+            return BinaryView.perform_is_valid_offset(self, addr)
+
+    def perform_get_length(self):
+        if self.hexify:
+            return len(self.raw_data)
+        else:
+            return BinaryView.perform_get_length(self)
+
     def init(self):
         try:
-            file_size = len(self.raw)
+            if self.hexify:
+                file_size = len(self.raw_data)
+            else:
+                file_size = len(self.data)
             self.entry_addr = 0
             self.add_entry_point(self.entry_addr)
             self.add_auto_segment(0, file_size, 0, file_size,
@@ -443,7 +493,11 @@ class EVMView(BinaryView):
 
     @classmethod
     def is_valid_for_data(self, data):
-        return data.file.filename.endswith('.bytecode')
+        file_name = data.file.filename
+        if file_name.endswith('.bytecode'):
+            return True
+        if file_name.endswith('.evm'):
+            return True
 
-
+        return False
 
