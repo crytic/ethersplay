@@ -394,7 +394,7 @@ class EVMView(BinaryView):
         # Check if input is a hexified string
         self.hexify = False
         if data.read(0,2) == '0x':
-            buf = (data.read(0, len(data))[2:].strip().rstrip()
+            buf = (data.read(0, len(data)))[2:].strip().rstrip()
             buf_set = set()
             for c in buf:
                 buf_set.update(c)
