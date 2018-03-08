@@ -383,11 +383,6 @@ class EVM(Architecture):
     def perform_assemble(self, code, addr):
         return None
 
-class InitialAnalysisCallback(AnalysisCompletionEvent):
-    def __init__(self, view, callback):
-        AnalysisCompletionEvent.__init__(self, view, callback)
-        self.analyzed = False
-
 class InitialAnalysisTask(BackgroundTaskThread):
     def __init__(self, bv):
         BackgroundTaskThread.__init__(self, "Initial Analysis", True)
@@ -490,7 +485,7 @@ class EVMView(BinaryView):
                                   (SegmentFlag.SegmentReadable |
                                    SegmentFlag.SegmentExecutable))
 
-            evt = InitialAnalysisCallback(self, analyze)
+            self.add_analysis_completion_event(analyze)
 
             return True
         except Exception as e:
