@@ -397,11 +397,6 @@ class InitialAnalysisTask(BackgroundTaskThread):
         run_initial_analysis(self.bv)
 
 def analyze(completion_event):
-    if completion_event.analyzed:
-        return
-
-    completion_event.analyzed = True
-
     set_worker_thread_count(4)
 
     iat = InitialAnalysisTask(completion_event.view)
