@@ -19,19 +19,44 @@ ln -s <your_download_location>/ethersplay/ethersplay .
 
 ## How to Use
 
-Ethersplay takes as input the evm bytecode in raw format.
+Ethersplay takes as input the evm bytecode in either ascii hex encoded or raw binary format.
  
 To have the bytecode of a solidity file, use solc:
 - `solc --bin-runtime file.sol`: to print the bytecode of the runtime part of the contract (for most of the cases).
 - `solc --bin file.sol`: to print the initialisation bytecode of the contract (constructor),
 
-To convert the text representation of the bytecode, use `utils/convert_bytecode.py`:
-```bash
-$ cat examples/test.evm
-60606040526000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063448f30a314610049578063b61d27f61461005e575b600080fd5b341561005457600080fd5b61005c6100d0565b005b341561006957600080fd5b6100b2600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091908035906020019091908035906020019082018035906020019190919290505061013b565b60405180826000191660001916815260200191505060405180910390f35b7ff9fbd55454309325ccadd998a641a1dfe7cd888eea26c0ae93b95992a13ac1446040518080602001828103825260078152602001807f6e6f7468696e670000000000000000000000000000000000000000000000000081525060200191505060405180910390a15b565b600061017a600161016c343073ffffffffffffffffffffffffffffffffffffffff163161024490919063ffffffff16565b61025e90919063ffffffff16565b5060008383905014156101de578473ffffffffffffffffffffffffffffffffffffffff168484846040518083838082843782019150509250505060006040518083038185876187965a03f19250505015156101d457600080fd5b61023c565b61023b565b84600080836000191660001916815260200190815260200160002060000160006101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505b5b949350505050565b600082821115151561025257fe5b81830390505b92915050565b600082821115151561026c57fe5b81830390505b929150505600a165627a7a72305820810579e0bc6d4b9345e309d56903d908914fafd2efc0f606473377675a3347100029
-$ python utils/convert_bytecode.py examples/test.evm examples/test.bytecode
+Prefix the output from solc with '0x' and then save it with the extension `.evm` or `.bytecode`.
+
+Example using test.sol with following contents:
+```test.sol:
+contract Test {
+    uint256 value;
+    function Test() {
+        value = 5;
+    }
+    function set_value(uint256 v) {
+        value = v;
+    }
+    function() payable {}
+}
 ```
-`examples/test.bytecode` can then be used with binary ninja.
+
+Run solidity to compile:
+`solc --bin-runtime test.sol`
+
+solc prints the bytecode to stdout in the format below:
+```
+======= test.sol:Test =======
+Binary of the runtime part:
+606060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063b0f2b72a146041575b005b3415604b57600080fd5b605f60048080359060200190919050506061565b005b80600081905550505600a165627a7a723058209821eec589f65821d954ad1fc884a743ae1c6ae959cfdacb08d5d9295ba630700029
+```
+
+Create test.evm with the last part of the solc output prefixed with 0x:
+```test.evm:
+0x606060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063b0f2b72a146041575b005b3415604b57600080fd5b605f60048080359060200190919050506061565b005b80600081905550505600a165627a7a723058209821eec589f65821d954ad1fc884a743ae1c6ae959cfdacb08d5d9295ba630700029
+```
+
+test.evm can be loaded into Binary Ninja
 
 
 ## Automatic analyses
