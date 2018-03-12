@@ -235,7 +235,7 @@ InstructionIL = {
 #        il.push(ADDR_SZ,
 #                il.mod_signed(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
 #    ],
-#    'STOP': lambda il, addr, operand, operand_size, pops, pushes: il.no_ret(),
+    'STOP': lambda il, addr, operand, operand_size, pops, pushes: il.no_ret(),
 #    'ALL_SWAP': lambda il, addr, operand, operand_size, pops, pushes: [
 #        swap(il, 1, operand_size + 1),
 #    ],
@@ -312,10 +312,8 @@ class EVM(Architecture):
         result.length = instruction.size
 
         # Add branches
-        if instruction.name in ['RETURN']:
+        if instruction.name in ['RETURN', 'REVERT', 'SUICIDE', 'INVALID', 'STOP', 'SELFDESTRUCT']:
             result.add_branch(BranchType.FunctionReturn)
-        elif instruction.name in ['REVERT', 'SUICIDE', 'INVALID', 'STOP']:
-            result.add_branch(BranchType.UnresolvedBranch)
         elif instruction.name in ['JUMPI']:
             result.add_branch(BranchType.UnresolvedBranch)
         elif instruction.name in ['JUMP']:
