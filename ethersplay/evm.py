@@ -1,6 +1,4 @@
 import traceback
-import time
-import threading
 
 from binaryninja import *
 from manticore_evm import *
@@ -383,55 +381,114 @@ class EVM(Architecture):
     def perform_assemble(self, code, addr):
         return None
 
+class InitialAnalysisTask(BackgroundTaskThread):
+    def __init__(self, bv):
+        BackgroundTaskThread.__init__(self, "Initial Analysis", True)
+        self.bv = bv
+
+    def run(self):
+        run_initial_analysis(self.bv)
+
+def analyze(completion_event):
+    set_worker_thread_count(4)
+
+    iat = InitialAnalysisTask(completion_event.view)
+    iat.start()
+
+def run_initial_analysis(view):
+    view.define_auto_symbol(Symbol(SymbolType.FunctionSymbol,
+                                    0,
+                                    "_dispatcher"))
+    CreateMethods(view).explore(view.get_basic_blocks_at(0)[0])
+    total_hashes = 0
+
+    for f in view.functions:
+        h = HashMatcher(f)
+        if f.basic_blocks is not None:
+            try:
+                h.explore(f.basic_blocks[0])
+            except IndexError:
+                log_error("Failed to explore " + str(f))
+
+    for f in view.functions:
+        function_dynamic_jump_start(view, f)
+    log.log(1, 'Initialization Done')
+
 class EVMView(BinaryView):
     name = "EVM"
     long_name = "EVM"
 
     def __init__(self, data):
-        BinaryView.__init__(self, file_metadata=data.file, parent_view=data)
-        self.raw = data
+
+        # Check if input is a hexified string
+        self.hexify = False
+        if data.read(0,2) == '0x':
+            buf = (data.read(0, len(data)))[2:].strip().rstrip()
+            buf_set = set()
+            for c in buf:
+                buf_set.update(c)
+            hex_set = set(list('0123456789abcdef'))
+            if buf_set <= hex_set: # subset
+                self.hexify = True
+                self.raw_data = buf.decode('hex')
+
+        if self.hexify:
+            parent_view = None
+        else:
+            parent_view = data
+
+        BinaryView.__init__(self, file_metadata=data.file, parent_view=parent_view)
+        
+        self.data = data
         self.arch = Architecture['evm']
         self.platform = self.arch.standalone_platform
 
+
+    # TODO: implement perform_write
+    #def perform_write(self, addr, data):
+    #    pass
+
+    def perform_read(self, addr, length):
+        if self.hexify:
+            try:
+                the_bytes = self.raw_data[addr:addr+length]
+                return the_bytes
+            except:
+                return None
+        else:
+            return BinaryView.perform_read(self, addr, length)
+
+
+    def perform_is_valid_offset(self, addr):
+        if self.hexify:
+            return addr < len(self.raw_data)
+        else:
+            return BinaryView.perform_is_valid_offset(self, addr)
+
+    def perform_get_length(self):
+        if self.hexify:
+            return len(self.raw_data)
+        else:
+            return BinaryView.perform_get_length(self)
+
     def init(self):
         try:
-            file_size = len(self.raw)
+            if self.hexify:
+                file_size = len(self.raw_data)
+            else:
+                file_size = len(self.data)
             self.entry_addr = 0
             self.add_entry_point(self.entry_addr)
             self.add_auto_segment(0, file_size, 0, file_size,
                                   (SegmentFlag.SegmentReadable |
                                    SegmentFlag.SegmentExecutable))
-            t = threading.Thread(target=self.check_if_initialized)
-            t.start()
+
+            self.add_analysis_completion_event(analyze)
+
             return True
         except Exception as e:
             log_error(traceback.print_stack())
             return False
-
-    def _analyze(self):
-        # create methods
-        CreateMethods(self).explore(self.get_basic_blocks_at(0)[0])
-        total_hashes = 0
-
-        for f in self.functions:
-            h = HashMatcher(f)
-            if f.basic_blocks is not None:
-                try:
-                    h.explore(f.basic_blocks[0])
-                except IndexError:
-                    log_error("Failed to explore " + str(f))
-
-        for f in self.functions:
-            function_dynamic_jump_start(self, f)
-
-    def check_if_initialized(self):
-        while not self.get_basic_blocks_at(0):
-            time.sleep(2)
-        start = self.define_auto_symbol(Symbol(SymbolType.FunctionSymbol,
-                                               0,
-                                               "_dispatcher"))
-        self._analyze()
-        log.log(1,  'Initialization done')
 
     def perform_is_executable(self):
         return True
@@ -441,7 +498,11 @@ class EVMView(BinaryView):
 
     @classmethod
     def is_valid_for_data(self, data):
-        return data.file.filename.endswith('.bytecode')
+        file_name = data.file.filename
+        if file_name.endswith('.bytecode'):
+            return True
+        if file_name.endswith('.evm'):
+            return True
 
-
+        return False
 
