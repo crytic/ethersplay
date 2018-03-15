@@ -31,7 +31,7 @@ class GraphColorer(object):
 
 
 def function_coverage_start(view):
-    visited = get_open_filename_input('Visited file', "visited.txt")
+    visited = get_open_filename_input('visited.txt or *.trace')
     colorer = GraphColorer(view)
     colorer.color(visited)
 
