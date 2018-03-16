@@ -4,20 +4,23 @@ from binaryninja import log
 
 blue = HighlightStandardColor.BlueHighlightColor
 
-class Coverage(object):
+class GraphColorer(object):
 
-    def __init__(self, view, visited):
+    def __init__(self, view):
         self.bb_seen = []
         self.view = view
-        self.color_visited(visited)
 
-    def color_visited(self, visited):
+    def color(self, visited):
         with open(visited,'r') as f:
             for line in f:
                 index = line.find(':') + 1
-                line = line[index:]
-                log.log(1, line)
-                self.color_at(int(line, 16))
+                addr = line[index:].split()[0]
+                log.log(1, addr)
+                try:
+                    self.color_at(int(addr, 16))
+                except ValueError:
+                    # if thrown by int()
+                    pass
 
     def color_at(self, addr):
         bbs = self.view.get_basic_blocks_at(addr)
@@ -28,6 +31,7 @@ class Coverage(object):
 
 
 def function_coverage_start(view):
-    visited = get_open_filename_input('Visited file', "visited.txt")
-    Coverage(view, visited)
+    visited = get_open_filename_input('visited.txt or *.trace')
+    colorer = GraphColorer(view)
+    colorer.color(visited)
 
