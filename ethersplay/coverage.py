@@ -26,7 +26,7 @@ class GraphColorer(object):
         bbs = self.view.get_basic_blocks_at(addr)
         for bb in bbs:
             func = bb.function
-            func.set_auto_instr_highlight(addr, blue)
+            func.set_instr_highlight(addr, blue)
 
 
 
