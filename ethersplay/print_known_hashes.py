@@ -1,5 +1,5 @@
 from known_hashes import knownHashes
-from binaryninja import Symbol, SymbolType, IntegerDisplayType, log_info
+from binaryninja import Symbol, SymbolType, IntegerDisplayType
 
 
 class HashMatcher(object):
