@@ -26,12 +26,13 @@ class GraphColorer(object):
         bbs = self.view.get_basic_blocks_at(addr)
         for bb in bbs:
             func = bb.function
-            func.set_auto_instr_highlight(addr, blue)
+            func.set_instr_highlight(addr, blue)
 
 
 
 def function_coverage_start(view):
     visited = get_open_filename_input('visited.txt or *.trace')
-    colorer = GraphColorer(view)
-    colorer.color(visited)
+    if visited:
+        colorer = GraphColorer(view)
+        colorer.color(visited)
 
