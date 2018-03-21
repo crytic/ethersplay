@@ -1,4 +1,6 @@
 from known_hashes import knownHashes
+from binaryninja import Symbol, SymbolType, IntegerDisplayType
+
 
 class HashMatcher(object):
 
@@ -12,10 +14,24 @@ class HashMatcher(object):
         for ins in bb.__iter__():
             details, size = ins
             if str(details[0]).startswith('PUSH'):
-                val = str(details[1])
-                if val in knownHashes:
-                    txt = knownHashes[val]
-                    self.func.set_comment(addr, txt)
+                operand = details[1]
+                op_text = operand.text
+                op_value = operand.value
+                if op_text in knownHashes:
+                    txt = knownHashes[op_text]
+                    self.func.view.define_user_symbol(
+                        Symbol(
+                            SymbolType.ImportedFunctionSymbol,
+                            op_value,
+                            '{} -> {}'.format(op_text, txt)
+                        )
+                    )
+                    self.func.set_int_display_type(
+                        addr,
+                        op_value,
+                        0,
+                        IntegerDisplayType.PointerDisplayType
+                    )
                     self.hashes_found += 1
             addr += size
 
