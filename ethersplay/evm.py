@@ -1,6 +1,7 @@
 import traceback
+import time
 
-from manticore_evm import EVMDecoder
+from evm_opcodes import EVMDecoder
 
 from binaryninja import (Architecture, RegisterInfo, InstructionInfo,
                          InstructionTextToken, BinaryView, log_info, log_error,
@@ -98,8 +99,6 @@ class EVM(Architecture):
         instruction = EVMDecoder.decode_one(data)
         if instruction is None:
             return instruction
-
-        tokens = []
 
         tokens = [
             InstructionTextToken(InstructionTextTokenType.TextToken,
@@ -283,4 +282,5 @@ class EVMView(BinaryView):
         if file_name.endswith('.evm'):
             return True
 
-        return False
+
+
