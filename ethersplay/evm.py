@@ -102,7 +102,7 @@ class EVM(Architecture):
 
         tokens = [
             InstructionTextToken(InstructionTextTokenType.TextToken,
-                                 '{}'.format(instruction.name))
+                                 '{:7s}'.format(instruction.name))
         ]
 
         if instruction.has_operand:
