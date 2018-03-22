@@ -288,7 +288,7 @@ def function_dynamic_jump_start(view, func):
                         if x != src + 1
                     ]
                 else:
-                    branches = [(func.arch, dst)]
+                    branches = [(func.arch, x) for x in dst]
 
                 func.set_user_indirect_branches(src, branches)
 
