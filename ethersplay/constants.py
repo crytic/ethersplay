@@ -19,3 +19,10 @@ MEMORY_SZ = 2**256
 STORAGE_START = 2**257
 STORAGE_SZ = 2**256 * 32
 STORAGE_PTR_SZ = 33
+
+EXT_ADDR_SZ = STORAGE_PTR_SZ
+
+# apparently binary ninja does not support memory offsets greater than 2**64-1
+# (so internal pointer size is apparently 64-bit)...
+MEMORY_START = 2**32
+MEMORY_SIZE = 2**16

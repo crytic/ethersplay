@@ -1,6 +1,7 @@
 from binaryninja import (Architecture, LowLevelILLabel, LLIL_TEMP)
 
-from constants import ADDR_SZ
+from constants import (ADDR_SZ, MEMORY_PTR_SZ, MEMORY_START, STORAGE_SZ,
+                       STORAGE_START, STORAGE_PTR_SZ, EXT_ADDR_SZ)
 
 TrapInstructions = {
     "CALL": 0,
@@ -224,22 +225,69 @@ def byte(il):
     return None
 
 
-def pop(il):
-    """pop without returning result"""
-    sp = il.reg(ADDR_SZ, 'sp')
-    new_sp = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, 32))
-    il.append(il.set_reg(ADDR_SZ, "sp", new_sp))
+# manual pop implementations - once I thought the LLIL internal pop wouldn't
+# handle 256 bit ints correctly. I think they do.
+# def pop(il):
+#     """pop without returning result"""
+#     sp = il.reg(ADDR_SZ, 'sp')
+#     new_sp = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, 32))
+#     il.append(il.set_reg(ADDR_SZ, "sp", new_sp))
+#     return None
+# def pop_r(il, n=0):
+#     """pop with result (into temp register n)"""
+#     r = LLIL_TEMP(n)
+#     sp = il.reg(ADDR_SZ, "sp")
+#     top = il.load(ADDR_SZ, sp)
+#     il.append(il.set_reg(ADDR_SZ, r, top))
+#     pop(il)
+#     return r
+
+
+def mstore(il):
+    # TODO: optimize later
+    # this is a rather lengthy lifting of mstore. e.g. the scratch register
+    # could be inlined. However, this way it is easier to debug.
+
+    # temp0 = s[0] = index
+    index = LLIL_TEMP(0)
+    il.append(il.set_reg(ADDR_SZ, index, il.pop(ADDR_SZ)))
+    # temp1 = s[1] = value
+    value = LLIL_TEMP(1)
+    il.append(il.set_reg(ADDR_SZ, value, il.pop(ADDR_SZ)))
+    scratch = LLIL_TEMP(2)
+
+    # TODO: this fails because binary ninja cannot handle a MEMORY_START larger
+    # than 2**64-1 -- for now MEMORY_START is smaller
+    il.append(
+        il.set_reg(MEMORY_PTR_SZ, scratch,
+                   il.const(MEMORY_PTR_SZ, MEMORY_START)))
+    il.append(
+        il.set_reg(MEMORY_PTR_SZ, scratch,
+                   il.add(MEMORY_PTR_SZ,
+                          il.reg(MEMORY_PTR_SZ, scratch),
+                          il.reg(MEMORY_PTR_SZ, index))))
+    il.append(
+        il.store(ADDR_SZ,
+                 il.reg(MEMORY_PTR_SZ, scratch), il.reg(ADDR_SZ, value)))
     return None
 
 
-def pop_r(il, n=0):
-    """pop with result (into temp register n)"""
-    r = LLIL_TEMP(n)
-    sp = il.reg(ADDR_SZ, "sp")
-    top = il.load(ADDR_SZ, sp)
-    il.append(il.set_reg(ADDR_SZ, r, top))
-    pop(il)
-    return r
+def mload(il):
+    # TODO: optimize later -- see mstore
+
+    # temp0 = s[0] = index
+    index = LLIL_TEMP(0)
+    il.append(il.set_reg(ADDR_SZ, index, il.pop(ADDR_SZ)))
+
+    scratch = LLIL_TEMP(2)
+    il.append(
+        il.set_reg(MEMORY_PTR_SZ, scratch,
+                   il.add(MEMORY_PTR_SZ,
+                          il.const(MEMORY_PTR_SZ, MEMORY_START),
+                          il.reg(MEMORY_PTR_SZ, index))))
+    il.append(
+        il.push(ADDR_SZ, il.load(ADDR_SZ, il.reg(MEMORY_PTR_SZ, scratch))))
+    return None
 
 
 def return_reg(name):
@@ -249,7 +297,7 @@ def return_reg(name):
 
 InstructionIL = {
     'ADD': lambda il, addr, operand, operand_size, pops, pushes: [
-        il.push(ADDR_SZ, il.add(ADDR_SZ, pop(ADDR_SZ), il.pop(ADDR_SZ)))
+        il.push(ADDR_SZ, il.add(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
     ],
     'ADDRESS': return_reg("address"),
     'ADDMOD': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -490,11 +538,12 @@ InstructionIL = {
                 il.mod_unsigned(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
     ],
     'MSTORE': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.store(ADDR_SZ,
-        #          il.add(MEMORY_PTR_SZ,
-        #                 il.pop(ADDR_SZ),
-        #                 il.const(MEMORY_PTR_SZ, MEMORY_START)),
-        #          il.pop(ADDR_SZ))
+        mstore(il),
+        # il.pop(ADDR_SZ),
+        # il.pop(ADDR_SZ),
+        # il.unimplemented(),
+    ],
+    'MSTORE8': lambda il, addr, operand, operand_size, pops, pushes: [
         il.pop(ADDR_SZ),
         il.pop(ADDR_SZ),
         il.unimplemented(),
@@ -504,9 +553,10 @@ InstructionIL = {
         #         il.add(MEMORY_PTR_SZ,
         #                il.pop(ADDR_SZ),
         #                il.const(MEMORY_PTR_SZ, MEMORY_START)))
-        il.pop(ADDR_SZ),
-        il.push(ADDR_SZ, il.unimplemented()),
-        il.unimplemented(),
+        # il.pop(ADDR_SZ),
+        # il.push(ADDR_SZ, il.unimplemented()),
+        # il.unimplemented(),
+        mload(il),
     ],
     'MUL': lambda il, addr, operand, operand_size, pops, pushes: [
         il.push(ADDR_SZ, il.mult(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))

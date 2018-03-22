@@ -1,5 +1,4 @@
 import traceback
-import time
 
 from evm_opcodes import EVMDecoder
 
@@ -13,7 +12,7 @@ from create_methods import CreateMethods
 from print_known_hashes import HashMatcher
 from stack_value_analysis import function_dynamic_jump_start
 
-from constants import ADDR_SZ
+from constants import (ADDR_SZ, EXT_ADDR_SZ, MEMORY_START, MEMORY_SZ)
 
 from evm_llil import InstructionIL, TrapInstructions
 from evm_gas import gas
@@ -22,9 +21,9 @@ import config
 
 class EVM(Architecture):
     name = 'evm'
-    address_size = ADDR_SZ
+    address_size = EXT_ADDR_SZ
     default_int_size = ADDR_SZ
-    max_instr_length = ADDR_SZ + 1
+    max_instr_length = 1 + 32
     endianness = Endianness.BigEndian
     _reglist = [
         # == Execution related registers - Mutable ==
@@ -258,7 +257,7 @@ class EVMView(BinaryView):
                 0, file_size, 0, file_size,
                 (SegmentFlag.SegmentReadable | SegmentFlag.SegmentExecutable))
 
-            # self.add_auto_section("memory", MEMORY_START, MEMORY_SZ)
+            self.add_auto_section("memory", MEMORY_START, MEMORY_SZ)
             # self.add_auto_section("storage", STORAGE_START, STORAGE_SZ)
 
             self.add_analysis_completion_event(analyze)
@@ -274,6 +273,9 @@ class EVMView(BinaryView):
     def perform_get_entry_point(self):
         return self.entry_addr
 
+    def perform_get_address_size(self):
+        return self.arch.address_size
+
     @staticmethod
     def is_valid_for_data(data):
         file_name = data.file.filename
@@ -281,6 +283,3 @@ class EVMView(BinaryView):
             return True
         if file_name.endswith('.evm'):
             return True
-
-
-
