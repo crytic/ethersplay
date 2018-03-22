@@ -314,6 +314,7 @@ class EVM(Architecture):
             result.add_branch(BranchType.FunctionReturn)
         elif instruction.name in ['JUMPI']:
             result.add_branch(BranchType.UnresolvedBranch)
+            result.add_branch(BranchType.FalseBranch, addr + 1)
         elif instruction.name in ['JUMP']:
             result.add_branch(BranchType.UnresolvedBranch)
             # TODO binja crash on some calls instruction, inspect this_
