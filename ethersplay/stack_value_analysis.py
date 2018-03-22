@@ -144,7 +144,6 @@ class StackValueAnalysis(object):
         'SELFDESTRUCT': (1, 0)
     }
 
-
     def __init__(self, func):
         self.stacks = {}
         # discovered_targets: src -> [dst]
@@ -155,7 +154,7 @@ class StackValueAnalysis(object):
         last_jump = None
         addr = bb.start
         for (ins, size) in bb.__iter__():
-#            self.func.set_comment(addr, "STACK "+ str(stack))
+            # self.func.set_comment(addr, "STACK "+ str(stack))
             last_jump = None
             op = str(ins[0]).replace(' ', '')
             # push X: add X to the stack
@@ -172,7 +171,7 @@ class StackValueAnalysis(object):
                 else:
                     elem = None
                     stack[-1] = elem
-                    missing_elems = nth_elem - len(stack)  + 1
+                    missing_elems = nth_elem - len(stack) + 1
                     missing_elems = [None for x in range(0, missing_elems)]
                     stack = missing_elems + stack
                     stack[-1-nth_elem] = top
@@ -234,8 +233,8 @@ class StackValueAnalysis(object):
         for ins in item:
             pass
 
-
         op = str(ins[0][0]).replace(' ', '')
+
         try:
             if op == 'JUMP':
                 src = bb.end-1
@@ -249,7 +248,8 @@ class StackValueAnalysis(object):
                 if src not in self.discovered_targets:
                     self.discovered_targets[src] = set()
                 self.discovered_targets[src].add(dst)
-                ## Add the next instruction as target, as JUMPI
+
+                # Add the next instruction as target, as JUMPI
                 dst = src + 1
                 if src not in self.discovered_targets:
                     self.discovered_targets[src] = set()
@@ -257,32 +257,43 @@ class StackValueAnalysis(object):
         except:
             pass
 
-
     def explore(self, bb):
         """The result of the analysis is in self.discovered_targets
         """
         self._transfer_func(bb, [], [])
+
 
 def function_dynamic_jump_start(view, func):
     if func.arch.name != 'evm':
         print "This plugin works only for EVM bytecode"
         return
     targets_found = {}
+
     # we loop until no more targets are found or an error occured
     while True:
         # FIXME (theo) why initialize a new class here-> can we put it
         # outside of the loop?R
         sv = StackValueAnalysis(func)
-        error = False
+
         sv.explore(func.basic_blocks[0])
+
         new_targets = sv.discovered_targets
+
         if new_targets != targets_found:
             for src, dst in new_targets.iteritems():
-                branches = map(lambda x: (func.arch, x), dst)
+                if len(dst) > 1:
+                    # Strip JUMPI fallthrough targets
+                    branches = [
+                        (func.arch, x) for x in dst
+                        if x != src + 1
+                    ]
+                else:
+                    branches = [(func.arch, dst)]
+
                 func.set_user_indirect_branches(src, branches)
+
             targets_found = new_targets
+
             view.update_analysis_and_wait()
         else:
-            break
-        if error:
             break
