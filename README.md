@@ -79,7 +79,7 @@ solc --asm-json examples/test.sol > examples/test.asm.json
 The source code file has to be in the same directory than the `*.asm.json` file.
 
 ### Manticore coverage
-Color the basic blocks explored through Manticore (using the `visited.txt` file).
+Color the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
 
 ## Known issues
 - Opening more than one bytecode file generates the wrong CFG
