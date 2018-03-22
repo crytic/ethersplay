@@ -277,7 +277,10 @@ def function_dynamic_jump_start(view, func):
         sv.explore(func.basic_blocks[0])
         new_targets = sv.discovered_targets
         if new_targets != targets_found:
+
             for src, dst in new_targets.iteritems():
+                if len(dst) > 1:
+                    dst = [x for x in dst if x != src + 1] # Strip JUMPI fallthrough targets
                 branches = map(lambda x: (func.arch, x), dst)
                 func.set_user_indirect_branches(src, branches)
             targets_found = new_targets
