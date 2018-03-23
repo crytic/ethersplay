@@ -6,7 +6,7 @@ from binaryninja import (Architecture, RegisterInfo, InstructionInfo,
                          InstructionTextToken, BinaryView, log_info, log_error,
                          Endianness, SegmentFlag, BackgroundTaskThread, Symbol,
                          SymbolType, set_worker_thread_count, BranchType,
-                         InstructionTextTokenType)
+                         InstructionTextTokenType, log)
 
 from create_methods import CreateMethods
 from print_known_hashes import HashMatcher
@@ -70,8 +70,6 @@ class EVM(Architecture):
         return instruction
 
     def perform_get_instruction_info(self, data, addr):
-        #        cache = getattr(self, 'cache', {})
-        #       setattr(self, 'cache', cache)
         instruction = EVMDecoder.decode_one(data)
 
         if instruction is None:
@@ -174,7 +172,6 @@ def run_initial_analysis(view):
     view.define_auto_symbol(
         Symbol(SymbolType.FunctionSymbol, 0, "_dispatcher"))
     CreateMethods(view).explore(view.get_basic_blocks_at(0)[0])
-    # total_hashes = 0
 
     for f in view.functions:
         h = HashMatcher(f)
@@ -186,7 +183,7 @@ def run_initial_analysis(view):
 
     for f in view.functions:
         function_dynamic_jump_start(view, f)
-    log_info('Initialization Done')
+    log.log(1, 'Initialization Done')
 
 
 class EVMView(BinaryView):
