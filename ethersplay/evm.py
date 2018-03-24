@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from binaryninja import *
+from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
+                         InstructionInfo, InstructionTextToken,
+                         InstructionTextTokenType, LowLevelILLabel,
+                         RegisterInfo, SegmentFlag)
 
 opcodes = {
     # opcode: (name, immediate_operand_size, pops, pushes, description)
@@ -161,7 +164,7 @@ opcodes = {
     0xf9: ('SSTOREBYTES', 0, 3, 0, 'Not in yellow paper FIXME'),
     0xfa: ('SSIZE', 0, 1, 1, 'Not in yellow paper FIXME'),
     0xfb: ('STATEROOT', 0, 1, 1, 'Not in yellow paper FIXME'),
-    0xfc: ('TXEXECGAS',0 , 0, 1, 'Not in yellow paper FIXME'),
+    0xfc: ('TXEXECGAS', 0, 0, 1, 'Not in yellow paper FIXME'),
     0xfd: ('REVERT', 0, 2, 0,
            ('Stop execution and revert state changes, without consuming '
             'all provided gas and providing a reason.')),
@@ -170,23 +173,21 @@ opcodes = {
            'Halt execution and register account for later deletion.')
 }
 
+
 def jumpi(il, addr, imm):
     t = LowLevelILLabel()
-    f = il.get_label_for_address(Architecture['EthVM'], addr+1)
+    f = il.get_label_for_address(Architecture['EVM'], addr+1)
     must_mark = False
 
     if f is None:
         f = LowLevelILLabel()
         must_mark = True
 
-    # We need to use a temporary register here. The il.if_expr() helper function makes a tree and evaluates the
-    #  condition's il.pop(32) first, but dest needs to be first.
+    # We need to use a temporary register here. The il.if_expr() helper
+    # function makes a tree and evaluates the condition's il.pop(32)
+    # first, but dest needs to be first.
     dest = il.pop(8)
     il.append(il.set_reg(8, LLIL_TEMP(addr), dest))
-
-    # Use a condition register that is never assigned to to prevent any pruning
-    # il.append(il.pop(8))
-    # cond = il.compare_equal(8, il.reg(8, 'cond'), il.const(8, 0))
 
     il.append(il.if_expr(il.pop(8), t, f))
 
@@ -199,6 +200,7 @@ def jumpi(il, addr, imm):
         il.append(il.jump(il.const(8, addr + 1)))
 
     return []
+
 
 def dup(mnem, il, addr, imm):
     a = int(mnem[3:])
@@ -213,8 +215,8 @@ def dup(mnem, il, addr, imm):
 
     return []
 
+
 def swap(mnem, il, addr, imm):
-    a = 0
     b = int(mnem[4:]) + 1
 
     for i in xrange(b-1):
@@ -230,6 +232,7 @@ def swap(mnem, il, addr, imm):
 
     return []
 
+
 def jump(il, addr, imm):
     dest = il.pop(8)
     il.append(il.set_reg(8, LLIL_TEMP(addr), dest))
@@ -239,99 +242,119 @@ def jump(il, addr, imm):
     return []
 
 
+def push(il, addr, imm):
+    return il.push(8, il.const(8, imm & 0xffffffffffffffff))
+
+
 insn_il = {
-        'AND' : lambda il, addr, imm: il.push(8, il.and_expr(8, il.pop(8), il.pop(8))),
-        'EQ' : lambda il, addr, imm: il.push(8, il.compare_equal(8, il.pop(8), il.pop(8))),
-        'POP' : lambda il, addr, imm: il.pop(8), # pop
-        'JUMP' : jump,
-        'JUMPI' : jumpi,
-        'PUSH1' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH2' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH3' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH4' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH5' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH6' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH7' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH8' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH9' : lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH10': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH11': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH12': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH13': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH14': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH15': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH16': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH17': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH18': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH19': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH20': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH21': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH22': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH23': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH24': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH25': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH26': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH27': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH28': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH29': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH30': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH31': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'PUSH32': lambda il, addr, imm: il.push(8, il.const(8, imm & 0xffffffffffffffff)),
-        'DUP1' : lambda il, addr, imm: dup('DUP1', il, addr, imm),
-        'DUP2' : lambda il, addr, imm: dup('DUP2', il, addr, imm),
-        'DUP3' : lambda il, addr, imm: dup('DUP3', il, addr, imm),
-        'DUP4' : lambda il, addr, imm: dup('DUP4', il, addr, imm),
-        'DUP5' : lambda il, addr, imm: dup('DUP5', il, addr, imm),
-        'DUP6' : lambda il, addr, imm: dup('DUP6', il, addr, imm),
-        'DUP7' : lambda il, addr, imm: dup('DUP7', il, addr, imm),
-        'DUP8' : lambda il, addr, imm: dup('DUP8', il, addr, imm),
-        'DUP9' : lambda il, addr, imm: dup('DUP9', il, addr, imm),
-        'DUP10' : lambda il, addr, imm: dup('DUP10', il, addr, imm),
-        'DUP11' : lambda il, addr, imm: dup('DUP11', il, addr, imm),
-        'DUP12' : lambda il, addr, imm: dup('DUP12', il, addr, imm),
-        'DUP13' : lambda il, addr, imm: dup('DUP13', il, addr, imm),
-        'DUP14' : lambda il, addr, imm: dup('DUP14', il, addr, imm),
-        'DUP15' : lambda il, addr, imm: dup('DUP15', il, addr, imm),
-        'DUP16' : lambda il, addr, imm: dup('DUP16', il, addr, imm),
-        'SWAP1' : lambda il, addr, imm: swap('SWAP1', il, addr, imm),
-        'SWAP2' : lambda il, addr, imm: swap('SWAP2', il, addr, imm),
-        'SWAP3' : lambda il, addr, imm: swap('SWAP3', il, addr, imm),
-        'SWAP4' : lambda il, addr, imm: swap('SWAP4', il, addr, imm),
-        'SWAP5' : lambda il, addr, imm: swap('SWAP5', il, addr, imm),
-        'SWAP6' : lambda il, addr, imm: swap('SWAP6', il, addr, imm),
-        'SWAP7' : lambda il, addr, imm: swap('SWAP7', il, addr, imm),
-        'SWAP8' : lambda il, addr, imm: swap('SWAP8', il, addr, imm),
-        'SWAP9' : lambda il, addr, imm: swap('SWAP9', il, addr, imm),
-        'SWAP10' : lambda il, addr, imm: swap('SWAP10', il, addr, imm),
-        'SWAP11' : lambda il, addr, imm: swap('SWAP11', il, addr, imm),
-        'SWAP12' : lambda il, addr, imm: swap('SWAP12', il, addr, imm),
-        'SWAP13' : lambda il, addr, imm: swap('SWAP13', il, addr, imm),
-        'SWAP14' : lambda il, addr, imm: swap('SWAP14', il, addr, imm),
-        'SWAP15' : lambda il, addr, imm: swap('SWAP15', il, addr, imm),
-        'SWAP16' : lambda il, addr, imm: swap('SWAP16', il, addr, imm),
-        'STOP' : lambda il, addr, imm: il.no_ret(),
-        'REVERT' : lambda il, addr, imm: il.no_ret(),
-        'RETURN' : lambda il, addr, imm: il.ret(il.pop(8)),
-        'INVALID' : lambda il, addr, imm: il.no_ret(),
-        'SUICIDE' : lambda il, addr, imm: il.ret(il.pop(8)),
-        'SELFDESTRUCT' : lambda il, addr, imm: il.ret(il.pop(8)),
+        'AND': lambda il, addr, imm: il.push(
+            8, il.and_expr(8, il.pop(8), il.pop(8))
+        ),
+        'EQ': lambda il, addr, imm: il.push(
+            8, il.compare_equal(8, il.pop(8), il.pop(8))
+        ),
+        'POP': lambda il, addr, imm: il.pop(8),
+        'JUMP': jump,
+        'JUMPI': jumpi,
+        'PUSH1': push,
+        'PUSH2': push,
+        'PUSH3': push,
+        'PUSH4': push,
+        'PUSH5': push,
+        'PUSH6': push,
+        'PUSH7': push,
+        'PUSH8': push,
+        'PUSH9': push,
+        'PUSH10': push,
+        'PUSH11': push,
+        'PUSH12': push,
+        'PUSH13': push,
+        'PUSH14': push,
+        'PUSH15': push,
+        'PUSH16': push,
+        'PUSH17': push,
+        'PUSH18': push,
+        'PUSH19': push,
+        'PUSH20': push,
+        'PUSH21': push,
+        'PUSH22': push,
+        'PUSH23': push,
+        'PUSH24': push,
+        'PUSH25': push,
+        'PUSH26': push,
+        'PUSH27': push,
+        'PUSH28': push,
+        'PUSH29': push,
+        'PUSH30': push,
+        'PUSH31': push,
+        'PUSH32': push,
+        'DUP1': lambda il, addr, imm: dup('DUP1', il, addr, imm),
+        'DUP2': lambda il, addr, imm: dup('DUP2', il, addr, imm),
+        'DUP3': lambda il, addr, imm: dup('DUP3', il, addr, imm),
+        'DUP4': lambda il, addr, imm: dup('DUP4', il, addr, imm),
+        'DUP5': lambda il, addr, imm: dup('DUP5', il, addr, imm),
+        'DUP6': lambda il, addr, imm: dup('DUP6', il, addr, imm),
+        'DUP7': lambda il, addr, imm: dup('DUP7', il, addr, imm),
+        'DUP8': lambda il, addr, imm: dup('DUP8', il, addr, imm),
+        'DUP9': lambda il, addr, imm: dup('DUP9', il, addr, imm),
+        'DUP10': lambda il, addr, imm: dup('DUP10', il, addr, imm),
+        'DUP11': lambda il, addr, imm: dup('DUP11', il, addr, imm),
+        'DUP12': lambda il, addr, imm: dup('DUP12', il, addr, imm),
+        'DUP13': lambda il, addr, imm: dup('DUP13', il, addr, imm),
+        'DUP14': lambda il, addr, imm: dup('DUP14', il, addr, imm),
+        'DUP15': lambda il, addr, imm: dup('DUP15', il, addr, imm),
+        'DUP16': lambda il, addr, imm: dup('DUP16', il, addr, imm),
+        'SWAP1': lambda il, addr, imm: swap('SWAP1', il, addr, imm),
+        'SWAP2': lambda il, addr, imm: swap('SWAP2', il, addr, imm),
+        'SWAP3': lambda il, addr, imm: swap('SWAP3', il, addr, imm),
+        'SWAP4': lambda il, addr, imm: swap('SWAP4', il, addr, imm),
+        'SWAP5': lambda il, addr, imm: swap('SWAP5', il, addr, imm),
+        'SWAP6': lambda il, addr, imm: swap('SWAP6', il, addr, imm),
+        'SWAP7': lambda il, addr, imm: swap('SWAP7', il, addr, imm),
+        'SWAP8': lambda il, addr, imm: swap('SWAP8', il, addr, imm),
+        'SWAP9': lambda il, addr, imm: swap('SWAP9', il, addr, imm),
+        'SWAP10': lambda il, addr, imm: swap('SWAP10', il, addr, imm),
+        'SWAP11': lambda il, addr, imm: swap('SWAP11', il, addr, imm),
+        'SWAP12': lambda il, addr, imm: swap('SWAP12', il, addr, imm),
+        'SWAP13': lambda il, addr, imm: swap('SWAP13', il, addr, imm),
+        'SWAP14': lambda il, addr, imm: swap('SWAP14', il, addr, imm),
+        'SWAP15': lambda il, addr, imm: swap('SWAP15', il, addr, imm),
+        'SWAP16': lambda il, addr, imm: swap('SWAP16', il, addr, imm),
+        'STOP': lambda il, addr, imm: il.no_ret(),
+        'REVERT': lambda il, addr, imm: il.no_ret(),
+        'RETURN': lambda il, addr, imm: il.ret(il.pop(8)),
+        'INVALID': lambda il, addr, imm: il.no_ret(),
+        'SUICIDE': lambda il, addr, imm: il.ret(il.pop(8)),
+        'SELFDESTRUCT': lambda il, addr, imm: il.ret(il.pop(8)),
 }
 
+
 class EVM(Architecture):
-    name = "EthVM"
-    address_size = 8 # Actual size is 32 but we're going to truncate everything
-    default_int_size = 8 # should be 32
+    name = "EVM"
+
+    # Actual size is 32 but we're going to truncate everything
+    address_size = 8
+
+    # should be 32
+    default_int_size = 8
+
     instr_alignment = 1
+
     max_instr_length = 33
+
     regs = {
         "sp": RegisterInfo("sp", 8),
-        "cond" : RegisterInfo("cond", 8), # condition register, never assigned to
-        "swap" : RegisterInfo("swap", 8) # swap temporary
+
+        # condition register, never assigned to
+        "cond": RegisterInfo("cond", 8),
+
+        # swap temporary
+        "swap": RegisterInfo("swap", 8),
     }
+
     stack_pointer = "sp"
 
     def decode_instruction(self, data, addr):
-        log_info("get_instruction_info")
         if len(data) < 1:
             return None, None, None, None, None
         opcode = ord(data[0])
@@ -343,11 +366,8 @@ class EVM(Architecture):
         (mnem, additional, pops, pushes, _) = info
 
         length = 1 + additional
-        operand = None
         immediate_value = None
         if additional > 0:
-            operand = data[1:1+additional]
-
             immediate_value = ord(data[1])
             for i in xrange(1, additional):
                 immediate_value <<= 8
@@ -357,7 +377,6 @@ class EVM(Architecture):
         return mnem, length, immediate_value, pops, pushes
 
     def perform_get_instruction_info(self, data, addr):
-        log_info("get_instruction_info")
         mnem, length, imm, pops, pushes = self.decode_instruction(data, addr)
         if mnem is None:
             return None
@@ -369,33 +388,44 @@ class EVM(Architecture):
         if mnem == "JUMPI":
             result.add_branch(BranchType.UnresolvedBranch)
             result.add_branch(BranchType.FalseBranch, addr + 1)
-        if mnem in ['RETURN', 'REVERT', 'SUICIDE', 'INVALID', 'STOP', 'SELFDESTRUCT']:
+        if mnem in ('RETURN', 'REVERT', 'SUICIDE', 'INVALID', 'STOP',
+                    'SELFDESTRUCT'):
             result.add_branch(BranchType.FunctionReturn)
 
         return result
 
     def perform_get_instruction_text(self, data, addr):
-        log_info("get_instruction_info")
         mnem, length, imm, pops, pushes = self.decode_instruction(data, addr)
         if mnem is None:
             return None
 
         tokens = []
-        tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "%-7s " % mnem.replace("@", "")))
+        tokens.append(
+            InstructionTextToken(
+                InstructionTextTokenType.TextToken,
+                "%-7s " % mnem.replace("@", "")
+            )
+        )
 
         if "PUSH" in mnem:
-            tokens.append(InstructionTextToken(InstructionTextTokenType.TextToken, "#"))
+            tokens.append(
+                InstructionTextToken(
+                    InstructionTextTokenType.TextToken, "#"
+                )
+            )
             fmtstring = "%.0{0}x".format((length - 1) * 2)
-            tokens.append(InstructionTextToken(InstructionTextTokenType.IntegerToken, fmtstring % imm, imm))
+            tokens.append(
+                InstructionTextToken(
+                    InstructionTextTokenType.IntegerToken, fmtstring % imm, imm
+                )
+            )
 
         return tokens, length
 
     def perform_get_instruction_low_level_il(self, data, addr, il):
-        log_info("get_instruction_low_level_il")
         mnem, length, imm, pops, pushes = self.decode_instruction(data, addr)
         if mnem is None:
             return None
-
 
         ill = insn_il.get(mnem, None)
         if ill is None:
@@ -423,24 +453,24 @@ class EVMView(BinaryView):
     long_name = "Ethereum Bytecode"
 
     def __init__(self, data):
-       BinaryView.__init__(self, parent_view = data, file_metadata = data.file)
-       self.raw = data
+        BinaryView.__init__(self, parent_view=data, file_metadata=data.file)
+        self.raw = data
 
     def init(self):
-        self.arch = Architecture['EthVM']
-        self.platform = Architecture['EthVM'].standalone_platform
+        self.arch = Architecture['EVM']
+        self.platform = Architecture['EVM'].standalone_platform
         self.add_entry_point(0)
 
         file_size = len(self.raw)
         self.add_auto_segment(
             0, file_size-3, 3, file_size,
             (SegmentFlag.SegmentReadable |
-            SegmentFlag.SegmentExecutable)
+                SegmentFlag.SegmentExecutable)
         )
         return True
 
-    @classmethod
-    def is_valid_for_data(self, data):
+    @staticmethod
+    def is_valid_for_data(data):
         file_header = data.read(0, 3)
         if file_header == 'EVM':
             return True
@@ -451,4 +481,3 @@ class EVMView(BinaryView):
 
     def perform_get_entry_point(self):
         return 0
-
