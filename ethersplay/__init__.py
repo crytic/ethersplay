@@ -1,5 +1,3 @@
-#from __future__ import print_function
-
 from binaryninja import PluginCommand
 
 from printSourceCode import function_source_code_start
