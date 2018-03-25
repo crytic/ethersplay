@@ -1,4 +1,4 @@
-from binaryninja import log_error, LowLevelILOperation
+from binaryninja import log_error
 
 from constants import ADDR_SZ
 from evm_llil import TrapInstructions
@@ -35,54 +35,50 @@ def handle_evm_call(instruction, view, function):
         function.set_comment(instruction.address, comment)
 
 
-def handle_store(function, instruction, address):
+def get_annotation_for_stack_offset(function, address, offset=0):
+    """offset is in terms of EVM stack slots"""
+
     sp = function.get_reg_value_at(address, 'sp')
     # sp should be a offset
     if hasattr(sp, 'offset'):
         spoff = sp.offset
     else:
         # binary ninja couldn't track the sp offset. bail out early
-        function.set_comment(
-            address, "address, value = <undetermined> (sp = " + str(sp) + ")")
-        return
+        return "<??? sp = " + str(sp) + ">"
 
-    mstore_addr = function.get_stack_contents_at(address, spoff, ADDR_SZ)
-    mstore_val = function.get_stack_contents_at(address, spoff + ADDR_SZ,
-                                                ADDR_SZ)
-    comment = "address = "
-    if hasattr(mstore_addr, 'value'):
-        comment += hex(mstore_addr.value)
-    else:
-        comment += "<undetermined>"
-    comment += ", value = "
-    if hasattr(mstore_val, 'value'):
-        if mstore_val.value > 2**10:
-            comment += hex(mstore_val.value)
+    val = function.get_stack_contents_at(address, spoff + ADDR_SZ * offset,
+                                         ADDR_SZ)
+    if hasattr(val, 'value'):
+        if val.value > 2**10:
+            return hex(val.value)
         else:
-            comment += str(mstore_val.value)
+            return str(val.value)
     else:
-        comment += "<undetermined>"
-    function.set_comment(address, comment)
+        return "<???>"
 
 
-def handle_load(function, instruction, address):
-    sp = function.get_reg_value_at(address, 'sp')
-    # sp should be a offset
-    if hasattr(sp, 'offset'):
-        spoff = sp.offset
-    else:
-        # binary ninja couldn't track the sp offset. bail out early
-        function.set_comment(
-            address, "address = <undetermined> (sp = " + str(sp) + ")")
-        return
-    m_addr = function.get_stack_contents_at(address, spoff, ADDR_SZ)
-    comment = "address = "
-    if hasattr(m_addr, 'value'):
-        comment += hex(m_addr.value)
-    else:
-        comment += "<undetermined>"
-    # comment += ", value = "
-    function.set_comment(address, comment)
+_ANNOTATIONS = {
+    "CALLDATALOAD": ('input_offset', ),
+    "CALLDATACOPY": ('mem_offset', 'input_offset', 'len'),
+    'CODECOPY': ('mem_offset', 'code_offset', 'len'),
+    'EXTCODECOPY': ('addr', 'mem_offset', 'code_offset', 'len'),
+    "MSTORE": ('address', 'value'),
+    "SSTORE": ('address', 'value'),
+    "SLOAD": ('address', ),
+    "MLOAD": ('address', ),
+    "CREATE": ('value', 'mem_offset', 'mem_size'),
+    "CALL": ('gas', 'address', 'value', 'inp_offset', 'inp_size', 'ret_offset',
+             'ret_size'),
+    "CALLCODE": ('gas', 'address', 'value', 'inp_offset', 'inp_size',
+                 'ret_offset', 'ret_size'),
+    "DELEGATECALL": ('gas', 'address', 'inp_offset', 'inp_size', 'ret_offset',
+                     'ret_size'),
+    "STATICCALL": ('gas', 'address', 'inp_offset', 'inp_size', 'ret_offset',
+                   'ret_size'),
+    "RETURN": ('mem_offset', 'mem_size'),
+    "REVERT": ('mem_offset', 'mem_size'),
+    "SUICIDE": ('address', ),
+}
 
 
 def annotate(view, function):
@@ -91,16 +87,33 @@ def annotate(view, function):
         return -1
 
     # registers = bv.platform.system_call_convention.int_arg_regs
-
-    for block in function.low_level_il:
-        for instruction in block:
-            if instruction.operation == LowLevelILOperation.LLIL_SYSCALL:
-                handle_evm_call(instruction, view, function)
+    # for block in function.low_level_il:
+    #     for instruction in block:
+    #         if instruction.operation == LowLevelILOperation.LLIL_SYSCALL:
+    #             handle_evm_call(instruction, view, function)
 
     for inst, address in function.instructions:
-        if (str(inst[0]).startswith("MSTORE")
-                or str(inst[0]).startswith("SSTORE")):
-            handle_store(function, inst, address)
-        elif (str(inst[0]).startswith("MLOAD")
-              or str(inst[0]).startswith("SLOAD")):
-            handle_load(function, inst, address)
+        inststr = str(inst[0]).strip()
+        if inststr in _ANNOTATIONS:
+            comment = ""
+            for stack_offset, annotation in enumerate(_ANNOTATIONS[inststr]):
+                if annotation:
+                    comment += (", {} = {}"
+                                .format(annotation,
+                                        get_annotation_for_stack_offset(
+                                            function, address, stack_offset)))
+            if comment:
+                # skip initial ', '
+                comment = comment[2:]
+                if len(comment) > 50:  # this number is pretty arbitrary
+                    comment = comment.replace(", ", ",\n")
+                function.set_comment(address, comment)
+
+
+def annotate_all(view):
+    if view.arch.name != 'evm':
+        log_error("This plugin works only for EVM bytecode")
+        return -1
+
+    for f in view.functions:
+        annotate(view, f)

@@ -12,9 +12,8 @@ PluginCommand.register("EVM Source Code", "EVM Source Code Printer.",
 PluginCommand.register("EVM Manticore Highlight", "EVM Manticore Highlight",
                        function_coverage_start)
 
-PluginCommand.register_for_function("EVM Annotate Instructions",
-                                    "EVM Annotate Instructions",
-                                    annotator.annotate)
+PluginCommand.register("EVM Annotate Instructions",
+                       "EVM Annotate Instructions", annotator.annotate_all)
 
 EVM.register()
 EVMView.register()
