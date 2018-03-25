@@ -202,30 +202,26 @@ def jumpi(il, addr, imm):
     return []
 
 
-def dup(mnem, il, addr, imm):
-    a = int(mnem[3:])
-
-    for i in xrange(a):
+def dup(il, addr, distance):
+    for i in xrange(distance):
         il.append(il.set_reg(8, LLIL_TEMP(i), il.pop(8)))
 
-    for i in xrange(a, 0, -1):
+    for i in xrange(distance, 0, -1):
         il.append(il.push(8, il.reg(8, LLIL_TEMP(i-1))))
 
-    il.append(il.push(8, il.reg(8, LLIL_TEMP(a - 1))))
+    il.append(il.push(8, il.reg(8, LLIL_TEMP(distance - 1))))
 
     return []
 
 
-def swap(mnem, il, addr, imm):
-    b = int(mnem[4:]) + 1
-
-    for i in xrange(b-1):
+def swap(il, addr, distance):
+    for i in xrange(distance):
         il.append(il.set_reg(8, LLIL_TEMP(i), il.pop(8)))
 
     il.append(il.set_reg(8, 'swap', il.pop(8)))
     il.append(il.push(8, il.reg(8, LLIL_TEMP(0))))
 
-    for i in xrange(b - 1, 1, -1):
+    for i in xrange(distance, 1, -1):
         il.append(il.push(8, il.reg(8, LLIL_TEMP(i-1))))
 
     il.append(il.push(8, il.reg(8, 'swap')))
@@ -256,15 +252,15 @@ insn_il = {
         'POP': lambda il, addr, imm: il.pop(8),
         'JUMP': jump,
         'JUMPI': jumpi,
-        'PUSH1': push,
-        'PUSH2': push,
-        'PUSH3': push,
-        'PUSH4': push,
-        'PUSH5': push,
-        'PUSH6': push,
-        'PUSH7': push,
-        'PUSH8': push,
-        'PUSH9': push,
+        'PUSH1':  push,
+        'PUSH2':  push,
+        'PUSH3':  push,
+        'PUSH4':  push,
+        'PUSH5':  push,
+        'PUSH6':  push,
+        'PUSH7':  push,
+        'PUSH8':  push,
+        'PUSH9':  push,
         'PUSH10': push,
         'PUSH11': push,
         'PUSH12': push,
@@ -288,39 +284,39 @@ insn_il = {
         'PUSH30': push,
         'PUSH31': push,
         'PUSH32': push,
-        'DUP1': lambda il, addr, imm: dup('DUP1', il, addr, imm),
-        'DUP2': lambda il, addr, imm: dup('DUP2', il, addr, imm),
-        'DUP3': lambda il, addr, imm: dup('DUP3', il, addr, imm),
-        'DUP4': lambda il, addr, imm: dup('DUP4', il, addr, imm),
-        'DUP5': lambda il, addr, imm: dup('DUP5', il, addr, imm),
-        'DUP6': lambda il, addr, imm: dup('DUP6', il, addr, imm),
-        'DUP7': lambda il, addr, imm: dup('DUP7', il, addr, imm),
-        'DUP8': lambda il, addr, imm: dup('DUP8', il, addr, imm),
-        'DUP9': lambda il, addr, imm: dup('DUP9', il, addr, imm),
-        'DUP10': lambda il, addr, imm: dup('DUP10', il, addr, imm),
-        'DUP11': lambda il, addr, imm: dup('DUP11', il, addr, imm),
-        'DUP12': lambda il, addr, imm: dup('DUP12', il, addr, imm),
-        'DUP13': lambda il, addr, imm: dup('DUP13', il, addr, imm),
-        'DUP14': lambda il, addr, imm: dup('DUP14', il, addr, imm),
-        'DUP15': lambda il, addr, imm: dup('DUP15', il, addr, imm),
-        'DUP16': lambda il, addr, imm: dup('DUP16', il, addr, imm),
-        'SWAP1': lambda il, addr, imm: swap('SWAP1', il, addr, imm),
-        'SWAP2': lambda il, addr, imm: swap('SWAP2', il, addr, imm),
-        'SWAP3': lambda il, addr, imm: swap('SWAP3', il, addr, imm),
-        'SWAP4': lambda il, addr, imm: swap('SWAP4', il, addr, imm),
-        'SWAP5': lambda il, addr, imm: swap('SWAP5', il, addr, imm),
-        'SWAP6': lambda il, addr, imm: swap('SWAP6', il, addr, imm),
-        'SWAP7': lambda il, addr, imm: swap('SWAP7', il, addr, imm),
-        'SWAP8': lambda il, addr, imm: swap('SWAP8', il, addr, imm),
-        'SWAP9': lambda il, addr, imm: swap('SWAP9', il, addr, imm),
-        'SWAP10': lambda il, addr, imm: swap('SWAP10', il, addr, imm),
-        'SWAP11': lambda il, addr, imm: swap('SWAP11', il, addr, imm),
-        'SWAP12': lambda il, addr, imm: swap('SWAP12', il, addr, imm),
-        'SWAP13': lambda il, addr, imm: swap('SWAP13', il, addr, imm),
-        'SWAP14': lambda il, addr, imm: swap('SWAP14', il, addr, imm),
-        'SWAP15': lambda il, addr, imm: swap('SWAP15', il, addr, imm),
-        'SWAP16': lambda il, addr, imm: swap('SWAP16', il, addr, imm),
-        'STOP': lambda il, addr, imm: il.no_ret(),
+        'DUP1':   lambda il, addr, imm: dup(il, addr, 1),
+        'DUP2':   lambda il, addr, imm: dup(il, addr, 2),
+        'DUP3':   lambda il, addr, imm: dup(il, addr, 3),
+        'DUP4':   lambda il, addr, imm: dup(il, addr, 4),
+        'DUP5':   lambda il, addr, imm: dup(il, addr, 5),
+        'DUP6':   lambda il, addr, imm: dup(il, addr, 6),
+        'DUP7':   lambda il, addr, imm: dup(il, addr, 7),
+        'DUP8':   lambda il, addr, imm: dup(il, addr, 8),
+        'DUP9':   lambda il, addr, imm: dup(il, addr, 9),
+        'DUP10':  lambda il, addr, imm: dup(il, addr, 10),
+        'DUP11':  lambda il, addr, imm: dup(il, addr, 11),
+        'DUP12':  lambda il, addr, imm: dup(il, addr, 12),
+        'DUP13':  lambda il, addr, imm: dup(il, addr, 13),
+        'DUP14':  lambda il, addr, imm: dup(il, addr, 14),
+        'DUP15':  lambda il, addr, imm: dup(il, addr, 15),
+        'DUP16':  lambda il, addr, imm: dup(il, addr, 16),
+        'SWAP1':  lambda il, addr, imm: swap(il, addr, 1),
+        'SWAP2':  lambda il, addr, imm: swap(il, addr, 2),
+        'SWAP3':  lambda il, addr, imm: swap(il, addr, 3),
+        'SWAP4':  lambda il, addr, imm: swap(il, addr, 4),
+        'SWAP5':  lambda il, addr, imm: swap(il, addr, 5),
+        'SWAP6':  lambda il, addr, imm: swap(il, addr, 6),
+        'SWAP7':  lambda il, addr, imm: swap(il, addr, 7),
+        'SWAP8':  lambda il, addr, imm: swap(il, addr, 8),
+        'SWAP9':  lambda il, addr, imm: swap(il, addr, 9),
+        'SWAP10': lambda il, addr, imm: swap(il, addr, 10),
+        'SWAP11': lambda il, addr, imm: swap(il, addr, 11),
+        'SWAP12': lambda il, addr, imm: swap(il, addr, 12),
+        'SWAP13': lambda il, addr, imm: swap(il, addr, 13),
+        'SWAP14': lambda il, addr, imm: swap(il, addr, 14),
+        'SWAP15': lambda il, addr, imm: swap(il, addr, 15),
+        'SWAP16': lambda il, addr, imm: swap(il, addr, 16),
+        'STOP':   lambda il, addr, imm: il.no_ret(),
         'REVERT': lambda il, addr, imm: il.no_ret(),
         'RETURN': lambda il, addr, imm: il.ret(il.pop(8)),
         'INVALID': lambda il, addr, imm: il.no_ret(),
