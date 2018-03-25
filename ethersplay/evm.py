@@ -3,8 +3,10 @@
 
 from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
                          InstructionInfo, InstructionTextToken,
-                         InstructionTextTokenType, LowLevelILLabel,
-                         RegisterInfo, SegmentFlag)
+                         InstructionTextTokenType, IntegerDisplayType,
+                         LowLevelILLabel, MediumLevelILOperation, RegisterInfo,
+                         SegmentFlag, SSAVariable, Symbol, SymbolType)
+from known_hashes import knownHashes
 
 opcodes = {
     # opcode: (name, immediate_operand_size, pops, pushes, description)
@@ -408,12 +410,7 @@ class EVM(Architecture):
         )
 
         if "PUSH" in mnem:
-            tokens.append(
-                InstructionTextToken(
-                    InstructionTextTokenType.TextToken, "#"
-                )
-            )
-            fmtstring = "%.0{0}x".format((length - 1) * 2)
+            fmtstring = "0x%.0{0}x".format((length - 1) * 2)
             tokens.append(
                 InstructionTextToken(
                     InstructionTextTokenType.IntegerToken, fmtstring % imm, imm
@@ -467,6 +464,8 @@ class EVMView(BinaryView):
             (SegmentFlag.SegmentReadable |
                 SegmentFlag.SegmentExecutable)
         )
+
+        self.add_analysis_completion_event(analyze)
         return True
 
     @staticmethod
@@ -481,3 +480,76 @@ class EVMView(BinaryView):
 
     def perform_get_entry_point(self):
         return 0
+
+
+def analyze(completion_event):
+    view = completion_event.view
+
+    view.define_auto_symbol(
+        Symbol(
+            SymbolType.FunctionSymbol,
+            0,
+            '_dispatcher'
+        )
+    )
+
+    function = None
+    for il in view.mlil_instructions:
+        function = il.function.source_function
+
+        il_func = il.function
+
+        if il.operation == MediumLevelILOperation.MLIL_IF:
+            condition = il.condition.ssa_form
+            condition_def = il_func.get_ssa_var_definition(condition.src)
+            def_il = il_func[condition_def].src
+
+            if def_il.operation == MediumLevelILOperation.MLIL_CMP_E:
+                left = def_il.left
+
+                if left.operation == MediumLevelILOperation.MLIL_CONST:
+                    stack_offset = function.get_reg_value_at(
+                        left.address, 'sp'
+                    ).offset
+
+                    stack_var = left.get_var_for_stack_location(stack_offset)
+                    stack_var_version = left.get_ssa_var_version(stack_var)
+                    ssa_stack_var = SSAVariable(stack_var, stack_var_version)
+
+                    hash_def = il_func.get_ssa_var_definition(
+                        ssa_stack_var
+                    )
+                    hash_il = il_func[hash_def]
+
+                    hash_value = hex(left.constant).replace('L', '')
+
+                    if hash_value in knownHashes:
+                        method_name = knownHashes[hash_value]
+
+                        view.define_user_symbol(
+                            Symbol(
+                                SymbolType.ImportedFunctionSymbol,
+                                left.constant,
+                                '0x{:8x} -> {}'.format(
+                                    left.constant, method_name
+                                )
+                            )
+                        )
+                        function.set_int_display_type(
+                            hash_il.address,
+                            left.constant,
+                            0,
+                            IntegerDisplayType.PointerDisplayType
+                        )
+                    else:
+                        method_name = hash_value
+
+                    target = il_func[il.true]
+
+                    if target.operation == MediumLevelILOperation.MLIL_JUMP_TO:
+                        view.create_user_function(target.dest.constant + 1)
+                        dispatch_function = view.get_function_at(
+                            target.dest.constant + 1
+                        )
+
+                        dispatch_function.name = method_name
