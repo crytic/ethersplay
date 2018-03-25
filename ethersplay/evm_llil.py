@@ -34,8 +34,12 @@ def cond_branch(il, addr):
     # condition's il.pop(ADDR_SZ) first, but dest needs to be first.
     dest = il.pop(ADDR_SZ)
     il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), dest))
-
-    cond = il.compare_equal(ADDR_SZ, il.pop(ADDR_SZ), il.const(ADDR_SZ, 0))
+    cond = il.pop(ADDR_SZ)
+    il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(1), cond))
+    cond = il.compare_equal(ADDR_SZ, il.reg(ADDR_SZ, LLIL_TEMP(1)),
+                            il.const(ADDR_SZ, 0))
+    # cond = il.compare_equal(ADDR_SZ, il.pop(ADDR_SZ),
+    #                         il.const(ADDR_SZ, 0))
 
     il.append(il.if_expr(cond, t, f))
 
@@ -60,9 +64,8 @@ def dup(il, a):
 
     # DUP1 does s'[0] = s[0] according to the yellow paper
     # so a - 1 for DUP1 is 1 - 1 = 0 is the top of the stack
-    a_addr = il.add(ADDR_SZ,
-                    il.reg(ADDR_SZ, 'sp'), il.const(ADDR_SZ,
-                                                    (a - 1) * ADDR_SZ))
+    a_addr = il.add(ADDR_SZ, il.reg(ADDR_SZ, 'sp'),
+                    il.const(ADDR_SZ, (a - 1) * ADDR_SZ))
     a_value = il.load(ADDR_SZ, a_addr)
     il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), a_value))
     il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, LLIL_TEMP(0))))
@@ -70,6 +73,10 @@ def dup(il, a):
 
 
 def evm_call(il, name, args=0, rets=0, noret=False):
+
+    # TODO: this is shown as "constant" besides the normal EVM assembly
+    # instruction. This is only internal to LLIL and not very pretty in the
+    # resulting diassembly...
     il.append(
         il.set_reg(ADDR_SZ, "evm_call_nr",
                    il.const(ADDR_SZ, TrapInstructions[name])))
@@ -78,12 +85,17 @@ def evm_call(il, name, args=0, rets=0, noret=False):
             val = il.pop(ADDR_SZ)
             sreg = il.set_reg(ADDR_SZ, 'evm_call_arg' + str(i), val)
             il.append(sreg)
+
     if noret:
         il.append(il.trap(TrapInstructions[name]))
     else:
         il.append(il.system_call())
     if rets:
         for i in range(rets):
+            # TODO: need to find a way that tells binary ninja that the
+            # evm_call_ret0 register is written by the syscall instruction
+            # il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, 'evm_call_ret0')))
+
             il.append(il.push(ADDR_SZ, il.unimplemented()))
     return None
 
@@ -104,21 +116,14 @@ def swap(il, a):
     a_addr = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, (a) * ADDR_SZ))
     b_addr = sp
 
-    # we use a - 1 here, because binary ninja is kind of weird with stack
-    # handling, 0 here is a valid offset
-    # a_addr = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, (a - 1) * ADDR_SZ))
-    # b_addr = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, ADDR_SZ))
-
     # Save the old a value into a temporary register
     a_val = il.load(ADDR_SZ, a_addr)
     a_reg = LLIL_TEMP(0)
     il.append(il.set_reg(ADDR_SZ, a_reg, a_val))
     b_val = il.load(ADDR_SZ, b_addr)
-    b_reg = LLIL_TEMP(1)
-    il.append(il.set_reg(ADDR_SZ, b_reg, b_val))
 
     # Copy b to a - overwriting a
-    il.append(il.store(ADDR_SZ, a_addr, il.reg(ADDR_SZ, b_reg)))
+    il.append(il.store(ADDR_SZ, a_addr, b_val))
 
     # Store old a to b
     il.append(il.store(ADDR_SZ, b_addr, il.reg(ADDR_SZ, a_reg)))
@@ -225,24 +230,6 @@ def byte(il):
     return None
 
 
-# manual pop implementations - once I thought the LLIL internal pop wouldn't
-# handle 256 bit ints correctly. I think they do.
-# def pop(il):
-#     """pop without returning result"""
-#     sp = il.reg(ADDR_SZ, 'sp')
-#     new_sp = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, 32))
-#     il.append(il.set_reg(ADDR_SZ, "sp", new_sp))
-#     return None
-# def pop_r(il, n=0):
-#     """pop with result (into temp register n)"""
-#     r = LLIL_TEMP(n)
-#     sp = il.reg(ADDR_SZ, "sp")
-#     top = il.load(ADDR_SZ, sp)
-#     il.append(il.set_reg(ADDR_SZ, r, top))
-#     pop(il)
-#     return r
-
-
 def mstore(il):
     # TODO: optimize later
     # this is a rather lengthy lifting of mstore. e.g. the scratch register
@@ -260,15 +247,11 @@ def mstore(il):
     # than 2**64-1 -- for now MEMORY_START is smaller
     il.append(
         il.set_reg(MEMORY_PTR_SZ, scratch,
-                   il.const(MEMORY_PTR_SZ, MEMORY_START)))
-    il.append(
-        il.set_reg(MEMORY_PTR_SZ, scratch,
-                   il.add(MEMORY_PTR_SZ,
-                          il.reg(MEMORY_PTR_SZ, scratch),
+                   il.add(MEMORY_PTR_SZ, il.const(MEMORY_PTR_SZ, MEMORY_START),
                           il.reg(MEMORY_PTR_SZ, index))))
     il.append(
-        il.store(ADDR_SZ,
-                 il.reg(MEMORY_PTR_SZ, scratch), il.reg(ADDR_SZ, value)))
+        il.store(ADDR_SZ, il.reg(MEMORY_PTR_SZ, scratch), il.reg(
+            ADDR_SZ, value)))
     return None
 
 
@@ -282,8 +265,7 @@ def mload(il):
     scratch = LLIL_TEMP(2)
     il.append(
         il.set_reg(MEMORY_PTR_SZ, scratch,
-                   il.add(MEMORY_PTR_SZ,
-                          il.const(MEMORY_PTR_SZ, MEMORY_START),
+                   il.add(MEMORY_PTR_SZ, il.const(MEMORY_PTR_SZ, MEMORY_START),
                           il.reg(MEMORY_PTR_SZ, index))))
     il.append(
         il.push(ADDR_SZ, il.load(ADDR_SZ, il.reg(MEMORY_PTR_SZ, scratch))))
@@ -297,7 +279,12 @@ def return_reg(name):
 
 InstructionIL = {
     'ADD': lambda il, addr, operand, operand_size, pops, pushes: [
-        il.push(ADDR_SZ, il.add(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
+        # il.push(ADDR_SZ, il.add(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ))),
+        il.set_reg(ADDR_SZ, LLIL_TEMP(0), il.pop(ADDR_SZ)),
+        il.set_reg(ADDR_SZ, LLIL_TEMP(1), il.pop(ADDR_SZ)),
+        il.push(ADDR_SZ, il.add(ADDR_SZ,
+                                il.reg(ADDR_SZ, LLIL_TEMP(0)),
+                                il.reg(ADDR_SZ, LLIL_TEMP(1)))),
     ],
     'ADDRESS': return_reg("address"),
     'ADDMOD': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -421,10 +408,12 @@ InstructionIL = {
         il.pop(ADDR_SZ),
     ],
     'JUMP': lambda il, addr, operand, operand_size, pops, pushes: [
-        il.jump(il.pop(ADDR_SZ))
+        # il.jump(il.pop(ADDR_SZ)),
+        il.set_reg(ADDR_SZ, LLIL_TEMP(0), il.pop(ADDR_SZ)),
+        il.jump(il.reg(ADDR_SZ, LLIL_TEMP(0))),
     ],
     'JUMPDEST': lambda il, addr, operand, operand_size, pops, pushes: [
-        label(il, addr)
+        label(il, addr),
     ],
     'JUMPI': lambda il, addr, operand, operand_size, pops, pushes: [
         cond_branch(il, operand)
@@ -442,9 +431,11 @@ InstructionIL = {
                 il.no_ret()),
     'ISZERO': lambda il, addr, operand, operand_size, pops, pushes: [
         # logical NOT, not bitwise: i.e. returns always 0 or 1
+        il.set_reg(ADDR_SZ, LLIL_TEMP(0), il.pop(ADDR_SZ)),
         il.push(ADDR_SZ,
                 il.and_expr(ADDR_SZ,
-                            il.not_expr(ADDR_SZ, il.pop(ADDR_SZ)),
+                            il.not_expr(ADDR_SZ,
+                                        il.reg(ADDR_SZ, LLIL_TEMP(0))),
                             il.const(ADDR_SZ, 1))),
     ],
     'RETURN': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -509,6 +500,7 @@ InstructionIL = {
         #          il.pop(ADDR_SZ))
         il.pop(ADDR_SZ),
         il.pop(ADDR_SZ),
+        il.unimplemented(),
     ],
     'SLOAD': lambda il, addr, operand, operand_size, pops, pushes: [
         # il.load(ADDR_SZ,
@@ -516,15 +508,18 @@ InstructionIL = {
         #                il.pop(ADDR_SZ),
         #                il.const(STORAGE_PTR_SZ, STORAGE_START)))
         il.pop(ADDR_SZ),
+        il.unimplemented(),
         il.push(ADDR_SZ, il.unimplemented()),
     ],
     'SHA3': lambda il, addr, operand, operand_size, pops, pushes: [
         # UNDEFINED
         il.pop(ADDR_SZ),  # s[0]
         il.pop(ADDR_SZ),  # s[1]
+        il.unimplemented(),
         il.push(ADDR_SZ, il.unimplemented()),
-        # TODO: implement SHA3 - really we need to get memory load working
-        # before we can do sha3, since this instruction also reads memory
+        # TODO: implement SHA3 in LLIL?
+        # really we need to get memory load working before we can do sha3,
+        # since this instruction also reads memory
     ],
     'TIMESTAMP': return_reg('timestamp'),
     'LT': lambda il, addr, operand, operand_size, pops, pushes: [

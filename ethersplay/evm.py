@@ -6,7 +6,7 @@ from binaryninja import (Architecture, RegisterInfo, InstructionInfo,
                          InstructionTextToken, BinaryView, log_info, log_error,
                          Endianness, SegmentFlag, BackgroundTaskThread, Symbol,
                          SymbolType, set_worker_thread_count, BranchType,
-                         InstructionTextTokenType, log)
+                         InstructionTextTokenType, log, LowLevelILOperation)
 
 from create_methods import CreateMethods
 from print_known_hashes import HashMatcher
@@ -60,6 +60,7 @@ class EVM(Architecture):
         'evm_call_arg4',
         'evm_call_arg5',
         'evm_call_arg6',
+        'evm_call_ret0',
     ]
     regs = {x: RegisterInfo(x, ADDR_SZ) for x in _reglist}
     stack_pointer = 'sp'
@@ -85,10 +86,12 @@ class EVM(Architecture):
         ]:
             result.add_branch(BranchType.FunctionReturn)
         elif instruction.name in ['JUMPI']:
+            # The unresolved branch will be added later
             result.add_branch(BranchType.UnresolvedBranch)
             result.add_branch(BranchType.FalseBranch, addr + 1)
         elif instruction.name in ['JUMP']:
-            result.add_branch(BranchType.UnconditionalBranch)
+            # The unresolved branch will be added later
+            result.add_branch(BranchType.UnresolvedBranch)
         elif instruction.name in TrapInstructions.values():
             result.add_branch(BranchType.SystemCall)
         return result
