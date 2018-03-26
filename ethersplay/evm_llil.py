@@ -3,7 +3,7 @@ from binaryninja import (Architecture, LowLevelILLabel, LLIL_TEMP)
 from constants import (ADDR_SZ, MEMORY_PTR_SZ, MEMORY_START, STORAGE_SZ,
                        STORAGE_START, STORAGE_PTR_SZ, EXT_ADDR_SZ)
 
-TrapInstructions = {
+EVMCallNr = {
     "CALL": 0,
     "CALLCODE": 1,
     "DELEGATECALL": 2,
@@ -15,7 +15,43 @@ TrapInstructions = {
     "BLOCKHASH": 8,
     "BALANCE": 9,
     "RETURN": 10,
+    "REVERT": 11,
+    "STOP": 12,
 }
+
+
+def evm_call(il, name, args=0, rets=0, noret=False):
+
+    # TODO: this is shown as "constant" besides the normal EVM assembly
+    # instruction. This is only internal to LLIL and not very pretty in the
+    # resulting diassembly...
+    il.append(
+        il.set_reg(ADDR_SZ, "evm_call_nr", il.const(ADDR_SZ, EVMCallNr[name])))
+    if args:
+        for i in range(args):
+            val = il.pop(ADDR_SZ)
+            sreg = il.set_reg(ADDR_SZ, 'evm_call_arg' + str(i), val)
+            il.append(sreg)
+
+    if noret:
+        # il.append(il.trap(EVMCallNr[name]))
+        il.append(il.system_call())
+        il.append(il.no_ret())
+    else:
+        il.append(il.system_call())
+    if rets:
+        for i in range(rets):
+            # TODO: need to find a way that tells binary ninja that the
+            # evm_call_ret0 register is written by the syscall instruction
+            # il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, 'evm_call_ret0')))
+
+            il.append(il.push(ADDR_SZ, il.unimplemented()))
+    return None
+
+
+def log(il, a):
+    evm_call(il, "LOG", a + 2)
+    return None
 
 
 def cond_branch(il, addr):
@@ -69,42 +105,6 @@ def dup(il, a):
     a_value = il.load(ADDR_SZ, a_addr)
     il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), a_value))
     il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, LLIL_TEMP(0))))
-    return None
-
-
-def evm_call(il, name, args=0, rets=0, noret=False):
-
-    # TODO: this is shown as "constant" besides the normal EVM assembly
-    # instruction. This is only internal to LLIL and not very pretty in the
-    # resulting diassembly...
-    il.append(
-        il.set_reg(ADDR_SZ, "evm_call_nr",
-                   il.const(ADDR_SZ, TrapInstructions[name])))
-    if args:
-        for i in range(args):
-            val = il.pop(ADDR_SZ)
-            sreg = il.set_reg(ADDR_SZ, 'evm_call_arg' + str(i), val)
-            il.append(sreg)
-
-    if noret:
-        il.append(il.trap(TrapInstructions[name]))
-    else:
-        il.append(il.system_call())
-    if rets:
-        for i in range(rets):
-            # TODO: need to find a way that tells binary ninja that the
-            # evm_call_ret0 register is written by the syscall instruction
-            # il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, 'evm_call_ret0')))
-
-            il.append(il.push(ADDR_SZ, il.unimplemented()))
-    return None
-
-
-def log(il, a):
-    for _ in range(a + 2):
-        il.append(il.pop(ADDR_SZ))
-    # return il.trap(TrapInstructions['LOG'])
-    evm_call(il, "LOG")
     return None
 
 
@@ -230,7 +230,7 @@ def byte(il):
     return None
 
 
-def mstore(il):
+def mstore(il, store_sz=32):
     # TODO: optimize later
     # this is a rather lengthy lifting of mstore. e.g. the scratch register
     # could be inlined. However, this way it is easier to debug.
@@ -250,8 +250,8 @@ def mstore(il):
                    il.add(MEMORY_PTR_SZ, il.const(MEMORY_PTR_SZ, MEMORY_START),
                           il.reg(MEMORY_PTR_SZ, index))))
     il.append(
-        il.store(ADDR_SZ, il.reg(MEMORY_PTR_SZ, scratch), il.reg(
-            ADDR_SZ, value)))
+        il.store(store_sz, il.reg(MEMORY_PTR_SZ, scratch),
+                 il.reg(ADDR_SZ, value)))
     return None
 
 
@@ -309,16 +309,11 @@ InstructionIL = {
                                      il.pop(ADDR_SZ)))
     ],
     'BALANCE': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.pop(ADDR_SZ),
-        # il.trap(TrapInstructions['BALANCE']),
         evm_call(il, 'BALANCE', 1, 1),
-        # il.push(ADDR_SZ, il.unimplemented()),
     ],
     'BYTE': lambda il, addr, operand, operand_size, pops, pushes: byte(il),
     'BLOCKHASH': lambda il, addr, operand, operand_size, pops, pushes: [
-        il.pop(ADDR_SZ),
-        # il.trap(TrapInstructions['BLOCKHASH']),
-        il.push(ADDR_SZ, il.unimplemented()),
+        evm_call(il, 'BLOCKHASH', 1, 1),
     ],
     'CALL': lambda il, addr, operand, operand_size, pops, pushes: [
         evm_call(il, 'CALL', 7, 1),
@@ -329,36 +324,20 @@ InstructionIL = {
     'CALLDATASIZE': return_reg("calldatasize"),
     'CALLDATAVALUE': return_reg("calldatavalue"),
     'CALLDATALOAD': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.pop(ADDR_SZ),
-        # il.trap(TrapInstructions['CALLDATALOAD']),
-        # il.push(ADDR_SZ, il.unimplemented()),
         evm_call(il, 'CALLDATALOAD', 1, 1),
     ],
     'CALLDATACOPY': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.trap(TrapInstructions['CALLDATACOPY']),
-        # il.push(ADDR_SZ, il.unimplemented()),
-        evm_call(il, 'CALLDATACOPY', 3, 1),
+        evm_call(il, 'CALLDATACOPY', 3, 0),
     ],
     'CALLER': return_reg("caller"),
     'CALLVALUE': return_reg("callvalue"),
     'CREATE': lambda il, addr, operand, operand_size, pops, pushes: [
-        # UNDEFINED
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.trap(TrapInstructions['CREATE']),
-        # il.push(ADDR_SZ, il.unimplemented()),
-
-        evm_call(il, 'CALLDATACOPY', 4, 1),
+        evm_call(il, 'CREATE', 3, 1),
     ],
     'COINBASE': return_reg('coinbase'),
     'CODESIZE': lambda il, addr, operand, operand_size, pops, pushes: [
         # TODO: get the actual code-size - this creates a dependency between
-        # this dictionary and the binaryview.
+        # this dictionary and the binaryview...
         il.push(ADDR_SZ, il.unimplemented())
     ],
     'CODECOPY': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -366,6 +345,7 @@ InstructionIL = {
         il.pop(ADDR_SZ),
         il.pop(ADDR_SZ),
         # TODO: copy code-bytes to memory
+        il.unimplemented(),
     ],
     'DIV': lambda il, addr, operand, operand_size, pops, pushes: [
         il.push(ADDR_SZ,
@@ -373,15 +353,6 @@ InstructionIL = {
     ],
     'DIFFICULTY': return_reg('difficulty'),
     'DELEGATECALL': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.trap(TrapInstructions['DELEGATECALL']),
-        # il.push(ADDR_SZ, il.unimplemented()),
-
         evm_call(il, 'DELEGATECALL', 6, 1),
     ],
     'EQ': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -391,11 +362,9 @@ InstructionIL = {
                                  il.pop(ADDR_SZ)))
     ],
     'EXP': lambda il, addr, operand, operand_size, pops, pushes: [
-        # UNDEFINED
-        il.pop(ADDR_SZ),
-        il.pop(ADDR_SZ),
-        il.push(ADDR_SZ, il.unimplemented())
-        # TODO: find a way to implement exponentation in llil
+        il.set_reg(ADDR_SZ, LLIL_TEMP(0), il.pop(ADDR_SZ)),
+        il.set_reg(ADDR_SZ, LLIL_TEMP(1), il.pop(ADDR_SZ)),
+        exp(il, il.reg(ADDR_SZ, LLIL_TEMP(0)), il.reg(ADDR_SZ, LLIL_TEMP(1))),
     ],
     'EXTCODESIZE': lambda il, addr, operand, operand_size, pops, pushes: [
         il.pop(ADDR_SZ),
@@ -406,6 +375,7 @@ InstructionIL = {
         il.pop(ADDR_SZ),
         il.pop(ADDR_SZ),
         il.pop(ADDR_SZ),
+        il.unimplemented(),
     ],
     'JUMP': lambda il, addr, operand, operand_size, pops, pushes: [
         # il.jump(il.pop(ADDR_SZ)),
@@ -440,16 +410,12 @@ InstructionIL = {
     ],
     'RETURN': lambda il, addr, operand, operand_size, pops, pushes: [
         # return is the end - but it's not the same as a traditional return, it
-        # basically returns to another address space. We model this as a trap
-        # and a no_ret directive.
-        # il.pop(ADDR_SZ),  # memory start
-        # il.pop(ADDR_SZ),  # memory stop
-        # il.trap(TrapInstructions['RETURN']),
-        # il.no_ret(),
+        # basically returns to another address space. We model this as a LLIL
+        # trap.
         evm_call(il, "RETURN", 2, 0, True)
     ],
     'REVERT': (lambda il, addr, operand, operand_size, pops, pushes:
-               il.no_ret()),
+               evm_call(il, 'REVERT', 2, 0, True)),
     'SDIV': lambda il, addr, operand, operand_size, pops, pushes: [
         il.push(ADDR_SZ,
                 il.div_signed(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
@@ -479,7 +445,8 @@ InstructionIL = {
         il.push(ADDR_SZ,
                 il.mod_signed(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
     ],
-    'STOP': lambda il, addr, operand, operand_size, pops, pushes: il.no_ret(),
+    'STOP': (lambda il, addr, operand, operand_size, pops, pushes:
+             evm_call(il, 'STOP', 0, 0, True)),
     # 'ALL_SWAP': lambda il, addr, operand, operand_size, pops, pushes: [
     #     swap(il, 1, operand_size + 1),
     # ],
@@ -487,9 +454,6 @@ InstructionIL = {
         il.push(ADDR_SZ, il.sub(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ))),
     ],
     'SUICIDE': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.pop(ADDR_SZ),
-        # il.trap(TrapInstructions['SUICIDE']),
-        # il.no_ret(),
         evm_call(il, "SUICIDE", 1, 0, True)
     ],
     'SSTORE': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -517,9 +481,7 @@ InstructionIL = {
         il.pop(ADDR_SZ),  # s[1]
         il.unimplemented(),
         il.push(ADDR_SZ, il.unimplemented()),
-        # TODO: implement SHA3 in LLIL?
-        # really we need to get memory load working before we can do sha3,
-        # since this instruction also reads memory
+        # TODO: implement SHA3 in LLIL? jk...
     ],
     'TIMESTAMP': return_reg('timestamp'),
     'LT': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -534,23 +496,11 @@ InstructionIL = {
     ],
     'MSTORE': lambda il, addr, operand, operand_size, pops, pushes: [
         mstore(il),
-        # il.pop(ADDR_SZ),
-        # il.pop(ADDR_SZ),
-        # il.unimplemented(),
     ],
     'MSTORE8': lambda il, addr, operand, operand_size, pops, pushes: [
-        il.pop(ADDR_SZ),
-        il.pop(ADDR_SZ),
-        il.unimplemented(),
+        mstore(il, 8),
     ],
     'MLOAD': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.load(ADDR_SZ,
-        #         il.add(MEMORY_PTR_SZ,
-        #                il.pop(ADDR_SZ),
-        #                il.const(MEMORY_PTR_SZ, MEMORY_START)))
-        # il.pop(ADDR_SZ),
-        # il.push(ADDR_SZ, il.unimplemented()),
-        # il.unimplemented(),
         mload(il),
     ],
     'MUL': lambda il, addr, operand, operand_size, pops, pushes: [

@@ -14,7 +14,7 @@ from stack_value_analysis import function_dynamic_jump_start
 
 from constants import (ADDR_SZ, EXT_ADDR_SZ, MEMORY_START, MEMORY_SZ)
 
-from evm_llil import InstructionIL, TrapInstructions
+from evm_llil import InstructionIL, EVMCallNr
 from evm_gas import gas
 import config
 
@@ -92,7 +92,7 @@ class EVM(Architecture):
         elif instruction.name in ['JUMP']:
             # The unresolved branch will be added later
             result.add_branch(BranchType.UnresolvedBranch)
-        elif instruction.name in TrapInstructions.values():
+        elif instruction.name in EVMCallNr.values():
             result.add_branch(BranchType.SystemCall)
         return result
 
