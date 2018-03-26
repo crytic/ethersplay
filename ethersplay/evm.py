@@ -374,7 +374,7 @@ class EVM(Architecture):
 
         return mnem, length, immediate_value, pops, pushes
 
-    def perform_get_instruction_info(self, data, addr):
+    def get_instruction_info(self, data, addr):
         mnem, length, imm, pops, pushes = self.decode_instruction(data, addr)
         if mnem is None:
             return None
@@ -392,7 +392,7 @@ class EVM(Architecture):
 
         return result
 
-    def perform_get_instruction_text(self, data, addr):
+    def get_instruction_text(self, data, addr):
         mnem, length, imm, pops, pushes = self.decode_instruction(data, addr)
         if mnem is None:
             return None
@@ -415,7 +415,7 @@ class EVM(Architecture):
 
         return tokens, length
 
-    def perform_get_instruction_low_level_il(self, data, addr, il):
+    def get_instruction_low_level_il(self, data, addr, il):
         mnem, length, imm, pops, pushes = self.decode_instruction(data, addr)
         if mnem is None:
             return None
@@ -471,10 +471,10 @@ class EVMView(BinaryView):
             return True
         return False
 
-    def perform_is_executable(self):
+    def is_executable(self):
         return True
 
-    def perform_get_entry_point(self):
+    def get_entry_point(self):
         return 0
 
 
@@ -497,6 +497,7 @@ def analyze(completion_event):
 
         if il.operation == MediumLevelILOperation.MLIL_IF:
             condition = il.condition.ssa_form
+
             condition_def = il_func.get_ssa_var_definition(condition.src)
             def_il = il_func[condition_def].src
 
