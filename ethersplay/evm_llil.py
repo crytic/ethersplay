@@ -72,7 +72,8 @@ def cond_branch(il, addr):
     il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), dest))
     cond = il.pop(ADDR_SZ)
     il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(1), cond))
-    cond = il.compare_equal(ADDR_SZ, il.reg(ADDR_SZ, LLIL_TEMP(1)),
+    cond = il.compare_equal(ADDR_SZ,
+                            il.reg(ADDR_SZ, LLIL_TEMP(1)),
                             il.const(ADDR_SZ, 0))
     # cond = il.compare_equal(ADDR_SZ, il.pop(ADDR_SZ),
     #                         il.const(ADDR_SZ, 0))
@@ -100,8 +101,9 @@ def dup(il, a):
 
     # DUP1 does s'[0] = s[0] according to the yellow paper
     # so a - 1 for DUP1 is 1 - 1 = 0 is the top of the stack
-    a_addr = il.add(ADDR_SZ, il.reg(ADDR_SZ, 'sp'),
-                    il.const(ADDR_SZ, (a - 1) * ADDR_SZ))
+    a_addr = il.add(ADDR_SZ,
+                    il.reg(ADDR_SZ, 'sp'), il.const(ADDR_SZ,
+                                                    (a - 1) * ADDR_SZ))
     a_value = il.load(ADDR_SZ, a_addr)
     il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), a_value))
     il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, LLIL_TEMP(0))))
@@ -164,25 +166,29 @@ def exp(il, a, b):
     loop_exit = LowLevelILLabel()
 
     # res = 1
-    il.append(il.set_reg(ADDR_SZ, retreg, 1))
+    il.append(il.set_reg(ADDR_SZ, retreg, const1))
     # while count < exponent
     il.mark_label(loop_check)
-    cond = il.compare_unsigned_less_than(ADDR_SZ, creg, expreg)
+    cond = il.compare_unsigned_less_than(ADDR_SZ,
+                                         il.reg(ADDR_SZ, creg),
+                                         il.reg(ADDR_SZ, expreg))
     il.append(il.if_expr(cond, loop_body, loop_exit))
     # loop
     il.mark_label(loop_body)
     # res = res * base
-    b = il.mult(ADDR_SZ, retreg, basereg)
+    b = il.mult(ADDR_SZ, il.reg(ADDR_SZ, retreg), il.reg(ADDR_SZ, basereg))
     il.append(il.set_reg(ADDR_SZ, retreg, b))
     # count += 1
-    il.append(il.set_reg(ADDR_SZ, creg, il.add(ADDR_SZ, creg, const1)))
+    il.append(
+        il.set_reg(ADDR_SZ, creg,
+                   il.add(ADDR_SZ, il.reg(ADDR_SZ, creg), const1)))
     # goto loop_check
     il.append(il.goto(loop_check))
 
     # break
     il.mark_label(loop_exit)
     # last step: push result to stack
-    il.append(il.push(ADDR_SZ, retreg))
+    il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, retreg)))
     return None
 
 
@@ -195,6 +201,7 @@ def byte(il):
     th = il.pop(ADDR_SZ)
     threg = LLIL_TEMP(0)
     il.append(il.set_reg(ADDR_SZ, threg, th))
+    threg = il.reg(ADDR_SZ, threg)
 
     # val = s[1]
     valreg = LLIL_TEMP(1)
@@ -205,7 +212,7 @@ def byte(il):
     ret0 = LowLevelILLabel()
     other = LowLevelILLabel()
     const32 = il.const(ADDR_SZ, 32)
-    ret0cond = il.compare_unsigned_greater_equal(threg, const32)
+    ret0cond = il.compare_unsigned_greater_equal(ADDR_SZ, threg, const32)
     il.append(il.if_expr(ret0cond, ret0, other))
 
     # then 0
@@ -217,16 +224,17 @@ def byte(il):
     il.mark_label(other)
     const8 = il.const(ADDR_SZ, 8)
     # shiftval = (31 - th) * 8
-    shiftval = il.mul(ADDR_SZ, il.sub(ADDR_SZ, const32, threg), const8)
+    shiftval = il.mult(ADDR_SZ, il.sub(ADDR_SZ, const32, threg), const8)
     # shifted = val >> shiftval
-    shifted = il.logical_shift_right(ADDR_SZ, valreg, shiftval)
+    shifted = il.logical_shift_right(ADDR_SZ, il.reg(ADDR_SZ, valreg),
+                                     shiftval)
     # anded = shifted & 0xff
     constff = il.const(ADDR_SZ, 0xff)
     anded = il.and_expr(ADDR_SZ, shifted, constff)
     # return anded
     il.append(il.set_reg(ADDR_SZ, retreg, anded))
 
-    il.append(il.push(ADDR_SZ, retreg))
+    il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, retreg)))
     return None
 
 
@@ -247,11 +255,12 @@ def mstore(il, store_sz=32):
     # than 2**64-1 -- for now MEMORY_START is smaller
     il.append(
         il.set_reg(MEMORY_PTR_SZ, scratch,
-                   il.add(MEMORY_PTR_SZ, il.const(MEMORY_PTR_SZ, MEMORY_START),
+                   il.add(MEMORY_PTR_SZ,
+                          il.const(MEMORY_PTR_SZ, MEMORY_START),
                           il.reg(MEMORY_PTR_SZ, index))))
     il.append(
-        il.store(store_sz, il.reg(MEMORY_PTR_SZ, scratch),
-                 il.reg(ADDR_SZ, value)))
+        il.store(store_sz,
+                 il.reg(MEMORY_PTR_SZ, scratch), il.reg(ADDR_SZ, value)))
     return None
 
 
@@ -265,7 +274,8 @@ def mload(il):
     scratch = LLIL_TEMP(2)
     il.append(
         il.set_reg(MEMORY_PTR_SZ, scratch,
-                   il.add(MEMORY_PTR_SZ, il.const(MEMORY_PTR_SZ, MEMORY_START),
+                   il.add(MEMORY_PTR_SZ,
+                          il.const(MEMORY_PTR_SZ, MEMORY_START),
                           il.reg(MEMORY_PTR_SZ, index))))
     il.append(
         il.push(ADDR_SZ, il.load(ADDR_SZ, il.reg(MEMORY_PTR_SZ, scratch))))
@@ -279,12 +289,7 @@ def return_reg(name):
 
 InstructionIL = {
     'ADD': lambda il, addr, operand, operand_size, pops, pushes: [
-        # il.push(ADDR_SZ, il.add(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ))),
-        il.set_reg(ADDR_SZ, LLIL_TEMP(0), il.pop(ADDR_SZ)),
-        il.set_reg(ADDR_SZ, LLIL_TEMP(1), il.pop(ADDR_SZ)),
-        il.push(ADDR_SZ, il.add(ADDR_SZ,
-                                il.reg(ADDR_SZ, LLIL_TEMP(0)),
-                                il.reg(ADDR_SZ, LLIL_TEMP(1)))),
+        il.push(ADDR_SZ, il.add(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ))),
     ],
     'ADDRESS': return_reg("address"),
     'ADDMOD': lambda il, addr, operand, operand_size, pops, pushes: [
@@ -365,6 +370,7 @@ InstructionIL = {
         il.set_reg(ADDR_SZ, LLIL_TEMP(0), il.pop(ADDR_SZ)),
         il.set_reg(ADDR_SZ, LLIL_TEMP(1), il.pop(ADDR_SZ)),
         exp(il, il.reg(ADDR_SZ, LLIL_TEMP(0)), il.reg(ADDR_SZ, LLIL_TEMP(1))),
+        # il.unimplemented(),
     ],
     'EXTCODESIZE': lambda il, addr, operand, operand_size, pops, pushes: [
         il.pop(ADDR_SZ),
