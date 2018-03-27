@@ -1,20 +1,19 @@
-#from __future__ import print_function
-
 from binaryninja import PluginCommand
 
-from printSourceCode import function_source_code_start
-
-from coverage import function_coverage_start
 from evm import EVM, EVMView
 
-PluginCommand.register("EVM Source Code",
-                       "EVM Source Code Printer.",
+from printSourceCode import function_source_code_start
+from coverage import function_coverage_start
+import annotator
+
+PluginCommand.register("EVM Source Code", "EVM Source Code Printer.",
                        function_source_code_start)
 
-PluginCommand.register("EVM Manticore Highlight",
-                       "EVM Manticore Highlight",
+PluginCommand.register("EVM Manticore Highlight", "EVM Manticore Highlight",
                        function_coverage_start)
 
+PluginCommand.register("EVM Annotate Instructions",
+                       "EVM Annotate Instructions", annotator.annotate_all)
 
 EVM.register()
 EVMView.register()

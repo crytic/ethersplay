@@ -1,0 +1,86 @@
+from constants import ADDR_SZ
+
+import config
+
+InstructionGas = {
+    'STOP': 0,
+    'ADD': 3,
+    'MUL': 5,
+    'SUB': 3,
+    'DIV': 2,
+    'SDIV': 5,
+    'MOD': 5,
+    'SMOD': 5,
+    'ADDMOD': 8,
+    'MULMOD': 8,
+    'EXP': 10,
+    'SIGNEXTEND': 5,
+    'LT': 3,
+    'GT': 3,
+    'SLT': 3,
+    'SGT': 3,
+    'EQ': 3,
+    'ISZERO': 3,
+    'AND': 3,
+    'OR': 3,
+    'XOR': 3,
+    'NOT': 3,
+    'BYTE': 3,
+    'SHA3': 30,
+    'ADDRESS': 2,
+    'BALANCE': 20,
+    'ORIGIN': 2,
+    'CALLER': 2,
+    'CALLVALUE': 2,
+    'CALLDATALOAD': 3,
+    'CALLDATASIZE': 2,
+    'CALLDATACOPY': 3,
+    'CODESIZE': 2,
+    'CODECOPY': 3,
+    'GASPRICE': 2,
+    'EXTCODESIZE': 20,
+    'EXTCODECOPY': 20,
+    'BLOCKHASH': 20,
+    'COINBASE': 2,
+    'TIMESTAMP': 2,
+    'NUMBER': 2,
+    'DIFFICULTY': 2,
+    'GASLIMIT': 2,
+    'POP': 2,
+    'MLOAD': 3,
+    'MSTORE': 3,
+    'MSTORE8': 3,
+    'SLOAD': 50,
+    'SSTORE': 0,
+    'JUMP': 8,
+    'JUMPI': 10,
+    'PC': 2,
+    'MSIZE': 2,
+    'GAS': 2,
+    'JUMPDEST': 1,
+    'ALL_PUSH': 3,
+    'ALL_DUP': 3,
+    'ALL_SWAP': 3,
+    'PUSH': 1875,
+    'DUP': 1875,
+    'SWAP': 1875,
+    'CREATE': 32000,
+    'CALL': 40,
+    'CALLCODE': 40,
+    'RETURN': 0,
+    'SELFDESTRUCT': 0,
+    'DELEGATECALL': 40,
+    'SUICIDE': 0
+}
+
+
+def gas(il, name):
+    if not config.ENABLE_GAS:
+        return
+    price = InstructionGas.get(name, 0)
+    if price != 0:
+        il.append(
+            il.set_reg(ADDR_SZ, 'gas_used',
+                       il.add(ADDR_SZ,
+                              il.reg(ADDR_SZ, 'gas_used'),
+                              il.const(ADDR_SZ, price))))

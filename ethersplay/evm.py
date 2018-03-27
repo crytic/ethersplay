@@ -1,296 +1,68 @@
 import traceback
 
-from binaryninja import *
-from manticore_evm import *
+from evm_opcodes import EVMDecoder
+
+from binaryninja import (Architecture, RegisterInfo, InstructionInfo,
+                         InstructionTextToken, BinaryView, log_info, log_error,
+                         Endianness, SegmentFlag, BackgroundTaskThread, Symbol,
+                         SymbolType, set_worker_thread_count, BranchType,
+                         InstructionTextTokenType, log, LowLevelILOperation)
 
 from create_methods import CreateMethods
 from print_known_hashes import HashMatcher
 from stack_value_analysis import function_dynamic_jump_start
 
-ADDR_SZ = 4
+from constants import (ADDR_SZ, EXT_ADDR_SZ, MEMORY_START, MEMORY_SZ)
 
-InstructionGas = {
-    'STOP' : 0,
-    'ADD' : 3,
-    'MUL' : 5,
-    'SUB' : 3,
-    'DIV' : 2,
-    'SDIV' : 5,
-    'MOD' : 5,
-    'SMOD' : 5,
-    'ADDMOD' : 8,
-    'MULMOD' : 8,
-    'EXP' : 10,
-    'SIGNEXTEND' : 5,
-    'LT' : 3,
-    'GT' : 3,
-    'SLT' : 3,
-    'SGT' : 3,
-    'EQ' : 3,
-    'ISZERO' : 3,
-    'AND' : 3,
-    'OR' : 3,
-    'XOR' : 3,
-    'NOT' : 3,
-    'BYTE' : 3,
-    'SHA3' : 30,
-    'ADDRESS' : 2,
-    'BALANCE' : 20,
-    'ORIGIN' : 2,
-    'CALLER' : 2,
-    'CALLVALUE' : 2,
-    'CALLDATALOAD' : 3,
-    'CALLDATASIZE' : 2,
-    'CALLDATACOPY' : 3,
-    'CODESIZE' : 2,
-    'CODECOPY' : 3,
-    'GASPRICE' : 2,
-    'EXTCODESIZE' : 20,
-    'EXTCODECOPY' : 20,
-    'BLOCKHASH' : 20,
-    'COINBASE' : 2,
-    'TIMESTAMP' : 2,
-    'NUMBER' : 2,
-    'DIFFICULTY' : 2,
-    'GASLIMIT' : 2,
-    'POP' : 2,
-    'MLOAD' : 3,
-    'MSTORE' : 3,
-    'MSTORE8' : 3,
-    'SLOAD' : 50,
-    'SSTORE' : 0,
-    'JUMP' : 8,
-    'JUMPI' : 10,
-    'PC' : 2,
-    'MSIZE' : 2,
-    'GAS' : 2,
-    'JUMPDEST' : 1,
-    'ALL_PUSH' : 3,
-    'ALL_DUP' : 3,
-    'ALL_SWAP': 3,
-    'PUSH' : 1875,
-    'DUP' : 1875,
-    'SWAP' : 1875,
-    'CREATE' : 32000,
-    'CALL' : 40,
-    'CALLCODE' : 40,
-    'RETURN' : 0,
-    'SELFDESTRUCT' : 0,
-    'DELEGATECALL' : 40,
-    'SUICIDE' : 0
-}
+from evm_llil import InstructionIL, EVMCallNr
+from evm_gas import gas
+import config
 
-# TODO: for now we remove the IL transformation
-
-#def cond_branch(il, addr):
-#
-#    t = LowLevelILLabel()
-#
-#    if addr is None:
-#        f = LowLevelILLabel()
-#    else:
-#        f = il.get_label_for_address(Architecture['evm'], addr + 1)
-#        if f is None:
-#            f = LowLevelILLabel()
-#
-#    # We need to use a temporary register here. The il.if_expr() helper
-#    # function makes a tree and evaluates the
-#    # condition's il.pop(ADDR_SZ) first, but dest needs to be first.
-#    dest = il.pop(ADDR_SZ)
-#    il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), dest))
-#
-#    cond = il.compare_equal(ADDR_SZ, il.pop(ADDR_SZ), il.const(ADDR_SZ, 0))
-#
-#    il.append(il.if_expr(cond, t, f))
-#
-#    il.mark_label(t)
-#    il.append(il.jump(il.reg(ADDR_SZ, LLIL_TEMP(0))))
-#
-#    il.mark_label(f)
-#    # false is the fall through case
-#    return None
-#
-#def label(il, addr):
-#    f = il.get_label_for_address(Architecture['evm'], addr)
-#    if f is None:
-#        f = LowLevelILLabel()
-#    il.append(il.nop())
-#    il.mark_label(f)
-#
-#def dup(il, a):
-#    a_addr = il.add(ADDR_SZ,
-#                    il.reg(ADDR_SZ, 'sp'),
-#                    il.const(ADDR_SZ, a * ADDR_SZ))
-#    a_value = il.load(ADDR_SZ, a_addr)
-#    il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), a_value))
-#    il.append(il.push(ADDR_SZ, il.reg(ADDR_SZ, LLIL_TEMP(0))))
-#    return None
-#
-
-#def swap(il, a, b):
-#    sp = il.reg(ADDR_SZ, 'sp')
-#    a_addr = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, (a - 1) * ADDR_SZ))
-#    b_addr = il.add(ADDR_SZ, sp, il.const(ADDR_SZ, (b - 1) * ADDR_SZ))
-#
-#    # Save the old A value
-#    old = il.load(ADDR_SZ, a_addr)
-#    il.append(il.set_reg(ADDR_SZ, LLIL_TEMP(0), old))
-#
-#    # Copy b to a
-#    il.append(il.store(ADDR_SZ, a_addr, il.load(ADDR_SZ, b_addr)))
-#
-#    # Store old a to b
-#    il.append(il.store(ADDR_SZ, b_addr, il.reg(ADDR_SZ, LLIL_TEMP(0))))
-#
-#    return None
-
-def gas(il, name):
-    price = InstructionGas.get(name, 0)
-    if price == 0:
-        return
-    il.append(il.set_reg(8,
-                         'gas',
-                         il.add(8, il.reg(8, 'gas'), il.const(8, price))))
-
-# d: stack arguments required
-# a: address
-# FIXME a bunch of insn are wrong (e.g., MLOAD, MSTORE), also get side-effects
-# from the yellow paper
-InstructionIL = {
-#    'ADD': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.add(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-#    'ADDMOD': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ,
-#                il.mod_unsigned(ADDR_SZ,
-#                                il.add(ADDR_SZ,
-#                                       il.pop(ADDR_SZ),
-#                                       il.pop(ADDR_SZ)),
-#                                il.pop(ADDR_SZ)))
-#    ],
-#    'ALL_PUSH': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.const(ADDR_SZ, operand))
-#    ],
-#    'ALL_DUP' : lambda il, addr, operand, operand_size, pops, pushes: [
-#        dup(il, operand_size)
-#    ],
-#    'AND': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.and_expr(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-#    'DIV': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ,
-#                il.div_unsigned(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-#    'EQ': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.compare_equal(ADDR_SZ,
-#                                          il.pop(ADDR_SZ),
-#                                          il.pop(ADDR_SZ)))
-#    ],
-#    'JUMP': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.jump(il.pop(ADDR_SZ))
-#    ],
-#    'JUMPDEST': lambda il, addr, operand, operand_size, pops, pushes: [
-#        label(il, addr)
-#    ],
-#    'JUMPI': lambda il, addr, operand, operand_size, pops, pushes: [
-#        cond_branch(il, operand)
-#    ],
-#    'GAS': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.reg(8, 'gas'))
-#    ],
-#    'GT': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.compare_unsigned_greater_than(ADDR_SZ,
-#                                                          il.pop(ADDR_SZ),
-#                                                          il.pop(ADDR_SZ)))
-#    ],
-    'INVALID': lambda il, addr, operand, operand_size, pops, pushes: il.no_ret(),
-#    'ISZERO': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.not_expr(ADDR_SZ, il.pop(ADDR_SZ)))
-#    ],
-    'RETURN': lambda il, addr, operand, operand_size, pops, pushes: [
-        il.ret(il.pop(ADDR_SZ))
-    ],
-    'REVERT': lambda il, addr, operand, operand_size, pops, pushes: il.no_ret(),
-#    'SDIV': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ,
-#                il.div_signed(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-#    'SIGNEXTEND': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ,
-#                il.sign_extedn(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ))),
-#    ],
-#    'SLT': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.compare_signed_less_than(ADDR_SZ,
-#                                                     il.pop(ADDR_SZ),
-#                                                     il.pop(ADDR_SZ)))
-#    ],
-#    'SLT': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.compare_signed_greater_than(ADDR_SZ,
-#                                                        il.pop(ADDR_SZ),
-#                                                        il.pop(ADDR_SZ)))
-#    ],
-#    'SMOD': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ,
-#                il.mod_signed(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-    'STOP': lambda il, addr, operand, operand_size, pops, pushes: il.no_ret(),
-#    'ALL_SWAP': lambda il, addr, operand, operand_size, pops, pushes: [
-#        swap(il, 1, operand_size + 1),
-#    ],
-#    'SUB': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.sub(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ))),
-#    ],
-    'SUICIDE': lambda il, addr, operand, operand_size, pops, pushes: [
-        il.ret(il.pop(ADDR_SZ))
-    ],
-#    'LT': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.compare_unsigned_less_than(ADDR_SZ,
-#                                                       il.pop(ADDR_SZ),
-#                                                       il.pop(ADDR_SZ)))
-#    ],
-#    'MLOAD': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.load(ADDR_SZ, il.pop(ADDR_SZ)))
-#    ],
-#    'MOD': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ,
-#                il.mod_unsigned(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-#    # FIXME wrong!
-#    'MSTORE': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.store(ADDR_SZ, il.load(ADDR_SZ, il.pop(ADDR_SZ)), il.pop(ADDR_SZ))
-#    ],
-#    'MUL': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.mult(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-#    'MULMOD': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ,
-#                il.mod_unsigned(ADDR_SZ,
-#                                il.mult(ADDR_SZ,
-#                                        il.pop(ADDR_SZ),
-#                                        il.pop(ADDR_SZ)),
-#                                il.pop(ADDR_SZ)))
-#    ],
-#    'NOT': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.not_expr(ADDR_SZ, il.pop(ADDR_SZ)))
-#    ],
-#    'OR': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.or_expr(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-#    'POP': lambda il, addr, operand, operand_size, pops, pushes: il.pop(ADDR_SZ),
-#    'XOR': lambda il, addr, operand, operand_size, pops, pushes: [
-#        il.push(ADDR_SZ, il.xor_expr(ADDR_SZ, il.pop(ADDR_SZ), il.pop(ADDR_SZ)))
-#    ],
-    'SELFDESTRUCT': lambda il, addr, operand, operand_size, pops, pushes: il.no_ret(),
-}
 
 class EVM(Architecture):
     name = 'evm'
-    address_size = ADDR_SZ * 8
-    default_int_size = ADDR_SZ * 8
-    # FIXME
-    max_instr_length = ADDR_SZ * 8 + 1
+    address_size = EXT_ADDR_SZ
+    default_int_size = ADDR_SZ
+    max_instr_length = 1 + 32
     endianness = Endianness.BigEndian
-    regs = {'sp': RegisterInfo('sp', ADDR_SZ), 'gas' : RegisterInfo('gas', 8)}
+    _reglist = [
+        # == Execution related registers - Mutable ==
+        'sp',
+        'pc',
+        'gas_used',
+        'gas_available',
+        # MSIZE is kind of a weird instruction, it returns the "size" of the
+        # current memory in use. of course a contract can mstore basically
+        # anywhere in memory
+        'msize',
+
+        # == environment information (immutable registers) ==
+        'address',
+        'caller',
+        'callvalue',
+        'calldatasize',
+        'gasprice'
+        'origin',
+
+        # == block information (immutable registers) ==
+        'coinbase',
+        'timestamp',
+        'number',
+        'difficulty',
+        'gaslimit',
+
+        # special register which is set for "system calls" into the EVM
+        'evm_call_nr',
+        'evm_call_arg0',
+        'evm_call_arg1',
+        'evm_call_arg2',
+        'evm_call_arg3',
+        'evm_call_arg4',
+        'evm_call_arg5',
+        'evm_call_arg6',
+        'evm_call_ret0',
+    ]
+    regs = {x: RegisterInfo(x, ADDR_SZ) for x in _reglist}
     stack_pointer = 'sp'
     flags = []
 
@@ -299,8 +71,6 @@ class EVM(Architecture):
         return instruction
 
     def perform_get_instruction_info(self, data, addr):
-#        cache = getattr(self, 'cache', {})
- #       setattr(self, 'cache', cache)
         instruction = EVMDecoder.decode_one(data)
 
         if instruction is None:
@@ -310,26 +80,26 @@ class EVM(Architecture):
         result.length = instruction.size
 
         # Add branches
-        if instruction.name in ['RETURN', 'REVERT', 'SUICIDE', 'INVALID', 'STOP', 'SELFDESTRUCT']:
+        if instruction.name in [
+                'RETURN', 'REVERT', 'SUICIDE', 'INVALID', 'STOP',
+                'SELFDESTRUCT'
+        ]:
             result.add_branch(BranchType.FunctionReturn)
         elif instruction.name in ['JUMPI']:
+            # The unresolved branch will be added later
             result.add_branch(BranchType.UnresolvedBranch)
             result.add_branch(BranchType.FalseBranch, addr + 1)
         elif instruction.name in ['JUMP']:
+            # The unresolved branch will be added later
             result.add_branch(BranchType.UnresolvedBranch)
-            # TODO binja crash on some calls instruction, inspect this_
-       # elif instruction.name in ['CALL', 'CALLCODE', 'DELEGATECALL']:
-            #print BranchType.CallDestination
-            #  result.add_branch(BranchType.CallDestination, None)
+        elif instruction.name in EVMCallNr.values():
+            result.add_branch(BranchType.SystemCall)
         return result
 
     def perform_get_instruction_text(self, data, addr):
         instruction = EVMDecoder.decode_one(data)
         if instruction is None:
             return instruction
-
-        tokens = []
-
 
         tokens = [
             InstructionTextToken(InstructionTextTokenType.TextToken,
@@ -338,16 +108,16 @@ class EVM(Architecture):
 
         if instruction.has_operand:
             operand = instruction.operand
-            tokens.append(InstructionTextToken((InstructionTextTokenType
-                                                .IntegerToken),
-                                               '{:#x}'.format(operand),
-                                               operand))
+            tokens.append(
+                InstructionTextToken((InstructionTextTokenType.IntegerToken),
+                                     '{:#x}'.format(operand), operand))
 
         return tokens, instruction.size
 
     def _get_name(self, name):
         name = name.lstrip().rstrip()
-        multiple_ops = ["PUSH", "DUP", "SWAP"]
+        # multiple_ops = ["PUSH", "DUP", "SWAP"]
+        multiple_ops = ["PUSH"]
         for op in multiple_ops:
             if name.startswith(op):
                 if name != op:
@@ -359,18 +129,16 @@ class EVM(Architecture):
         # opcode: (name, immediate_operand_size, pops, pushes, description)
         if insn is None:
             return None
+
         name = self._get_name(insn.name)
         # pay the gas upfront
         gas(il, name)
         # see what we execute
-        if InstructionIL.get(name) is None:
+        if not config.ENABLE_LLIL_LIFTING or name not in InstructionIL:
             il.append(il.unimplemented())
         else:
-            ilins = InstructionIL[name](il,
-                                        addr,
-                                        insn.operand,
-                                        insn.operand_size,
-                                        insn.pops,
+            ilins = InstructionIL[name](il, addr, insn.operand,
+                                        insn.operand_size, insn.pops,
                                         insn.pushes)
             if isinstance(ilins, list):
                 for i in [i for i in ilins if i is not None]:
@@ -382,6 +150,12 @@ class EVM(Architecture):
     def perform_assemble(self, code, addr):
         return None
 
+
+# class EVMPlatform(Platform):
+# TODO: do we want a custom platform for calling conventions (and syscall
+# conventions?)
+
+
 class InitialAnalysisTask(BackgroundTaskThread):
     def __init__(self, bv):
         BackgroundTaskThread.__init__(self, "Initial Analysis", True)
@@ -390,18 +164,18 @@ class InitialAnalysisTask(BackgroundTaskThread):
     def run(self):
         run_initial_analysis(self.bv)
 
+
 def analyze(completion_event):
     set_worker_thread_count(4)
 
     iat = InitialAnalysisTask(completion_event.view)
     iat.start()
 
+
 def run_initial_analysis(view):
-    view.define_auto_symbol(Symbol(SymbolType.FunctionSymbol,
-                                    0,
-                                    "_dispatcher"))
+    view.define_auto_symbol(
+        Symbol(SymbolType.FunctionSymbol, 0, "_dispatcher"))
     CreateMethods(view).explore(view.get_basic_blocks_at(0)[0])
-    total_hashes = 0
 
     for f in view.functions:
         h = HashMatcher(f)
@@ -415,6 +189,7 @@ def run_initial_analysis(view):
         function_dynamic_jump_start(view, f)
     log.log(1, 'Initialization Done')
 
+
 class EVMView(BinaryView):
     name = "EVM"
     long_name = "EVM"
@@ -423,13 +198,13 @@ class EVMView(BinaryView):
 
         # Check if input is a hexified string
         self.hexify = False
-        if data.read(0,2) == '0x':
+        if data.read(0, 2) == '0x':
             buf = (data.read(0, len(data)))[2:].strip().rstrip()
             buf_set = set()
             for c in buf:
                 buf_set.update(c)
             hex_set = set(list('0123456789abcdef'))
-            if buf_set <= hex_set: # subset
+            if buf_set <= hex_set:  # subset
                 self.hexify = True
                 self.raw_data = buf.decode('hex')
 
@@ -438,12 +213,12 @@ class EVMView(BinaryView):
         else:
             parent_view = data
 
-        BinaryView.__init__(self, file_metadata=data.file, parent_view=parent_view)
-        
+        BinaryView.__init__(
+            self, file_metadata=data.file, parent_view=parent_view)
+
         self.data = data
         self.arch = Architecture['evm']
         self.platform = self.arch.standalone_platform
-
 
     # TODO: implement perform_write
     #def perform_write(self, addr, data):
@@ -452,13 +227,12 @@ class EVMView(BinaryView):
     def perform_read(self, addr, length):
         if self.hexify:
             try:
-                the_bytes = self.raw_data[addr:addr+length]
+                the_bytes = self.raw_data[addr:addr + length]
                 return the_bytes
             except:
                 return None
         else:
             return BinaryView.perform_read(self, addr, length)
-
 
     def perform_is_valid_offset(self, addr):
         if self.hexify:
@@ -480,9 +254,12 @@ class EVMView(BinaryView):
                 file_size = len(self.data)
             self.entry_addr = 0
             self.add_entry_point(self.entry_addr)
-            self.add_auto_segment(0, file_size, 0, file_size,
-                                  (SegmentFlag.SegmentReadable |
-                                   SegmentFlag.SegmentExecutable))
+            self.add_auto_segment(
+                0, file_size, 0, file_size,
+                (SegmentFlag.SegmentReadable | SegmentFlag.SegmentExecutable))
+
+            self.add_auto_section("memory", MEMORY_START, MEMORY_SZ)
+            # self.add_auto_section("storage", STORAGE_START, STORAGE_SZ)
 
             self.add_analysis_completion_event(analyze)
 
@@ -497,13 +274,13 @@ class EVMView(BinaryView):
     def perform_get_entry_point(self):
         return self.entry_addr
 
-    @classmethod
-    def is_valid_for_data(self, data):
+    def perform_get_address_size(self):
+        return self.arch.address_size
+
+    @staticmethod
+    def is_valid_for_data(data):
         file_name = data.file.filename
         if file_name.endswith('.bytecode'):
             return True
         if file_name.endswith('.evm'):
             return True
-
-        return False
-
