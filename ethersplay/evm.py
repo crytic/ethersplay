@@ -40,28 +40,43 @@ def jumpi(il, addr, imm):
 
 
 def dup(il, addr, distance):
-    for i in xrange(distance):
-        il.append(il.set_reg(8, LLIL_TEMP(i), il.pop(8)))
+    il.append(
+        il.set_reg(
+            8, LLIL_TEMP(0), il.load(
+                8, il.add(
+                    8, il.reg(8, 'sp'), il.const(8, (distance - 1) * 8)
+                )
+            )
+        )
+    )
 
-    for i in xrange(distance, 0, -1):
-        il.append(il.push(8, il.reg(8, LLIL_TEMP(i-1))))
-
-    il.append(il.push(8, il.reg(8, LLIL_TEMP(distance - 1))))
+    il.append(il.push(8, il.reg(8, LLIL_TEMP(0))))
 
     return []
 
 
 def swap(il, addr, distance):
-    for i in xrange(distance):
-        il.append(il.set_reg(8, LLIL_TEMP(i), il.pop(8)))
+    stack_offset = distance * 8
 
-    il.append(il.set_reg(8, 'swap', il.pop(8)))
-    il.append(il.push(8, il.reg(8, LLIL_TEMP(0))))
+    load = il.load(
+        8, il.add(
+            8, il.reg(8, 'sp'), il.const(8, stack_offset)
+        )
+    )
 
-    for i in xrange(distance, 1, -1):
-        il.append(il.push(8, il.reg(8, LLIL_TEMP(i-1))))
+    il.append(il.set_reg(8, LLIL_TEMP(0), load))
 
-    il.append(il.push(8, il.reg(8, 'swap')))
+    il.append(il.set_reg(8, LLIL_TEMP(1), il.load(8, il.reg(8, 'sp'))))
+
+    il.append(
+        il.store(
+            8, il.add(
+                8, il.reg(8, 'sp'), il.const(8, stack_offset)
+            ),
+            il.reg(8, LLIL_TEMP(1))
+        )
+    )
+    il.append(il.store(8, il.reg(8, 'sp'), il.reg(8, LLIL_TEMP(0))))
 
     return []
 
@@ -192,12 +207,6 @@ class EVM(Architecture):
 
     regs = {
         "sp": RegisterInfo("sp", 8),
-
-        # condition register, never assigned to
-        "cond": RegisterInfo("cond", 8),
-
-        # swap temporary
-        "swap": RegisterInfo("swap", 8),
     }
 
     stack_pointer = "sp"
@@ -251,7 +260,7 @@ class EVM(Architecture):
         if ill is None:
 
             for i in xrange(instruction.pops):
-                il.append(il.pop(8))
+                il.append(il.set_reg(8, LLIL_TEMP(i), il.pop(8)))
 
             for i in xrange(instruction.pushes):
                 il.append(il.push(8, il.unimplemented()))
@@ -323,6 +332,11 @@ def analyze(completion_event):
     # Iterate over all of the MLIL instructions and find all the JUMPI
     # instructions.
     for il in view.mlil_instructions:
+        var_ops = (
+            MediumLevelILOperation.MLIL_VAR_SSA,
+            MediumLevelILOperation.MLIL_VAR_ALIASED
+        )
+
         function = il.function.source_function
 
         il_func = il.function
@@ -331,17 +345,27 @@ def analyze(completion_event):
             condition = il.condition.ssa_form
 
             # if conditions will always be a temp MLIL_VAR
-            if condition.operation != MediumLevelILOperation.MLIL_VAR_SSA:
+            if condition.operation not in var_ops:
                 continue
 
             condition_def = il_func.get_ssa_var_definition(condition.src)
+
+            if condition_def is None:
+                continue
+
             def_il = il_func[condition_def].src.ssa_form
 
             # The temp variable _should_ be assigned another variable,
             # but just in case it isn't we won't assume it to be so
             # and go ahead and check for it here.
-            if def_il.operation == MediumLevelILOperation.MLIL_VAR_SSA:
+            if def_il.operation in var_ops:
                 condition_def = il_func.get_ssa_var_definition(def_il.src)
+
+                if condition_def is None:
+                    continue
+
+                print condition_def, il_func[condition_def]
+
                 def_il = il_func[condition_def].src
 
             # For dispatch functions, we're looking for a equality comparison
