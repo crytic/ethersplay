@@ -377,19 +377,29 @@ def analyze(completion_event):
 
                 if left.operation == MediumLevelILOperation.MLIL_CONST:
                     hash_constant = left
+
+                    # Locate the definition of the hash value so we can set
+                    # the int display type of the hash to a pointer. This
+                    # will let us display the hash name there as a different
+                    # color.
+                    stack_offset = function.get_reg_value_at(
+                        hash_constant.address, 'sp'
+                    ).offset
+
                 elif right.operation == MediumLevelILOperation.MLIL_CONST:
                     hash_constant = right
+
+                    # Locate the definition of the hash value so we can set
+                    # the int display type of the hash to a pointer. This
+                    # will let us display the hash name there as a different
+                    # color.
+                    stack_offset = function.get_reg_value_at(
+                        hash_constant.address, 'sp'
+                    ).offset + 8
+
                 else:
                     # If there is no constant, just keep going.
                     continue
-
-                # Locate the definition of the hash value so we can set
-                # the int display type of the hash to a pointer. This
-                # will let us display the hash name there as a different
-                # color.
-                stack_offset = function.get_reg_value_at(
-                    hash_constant.address, 'sp'
-                ).offset
 
                 stack_var = hash_constant.get_var_for_stack_location(
                     stack_offset
