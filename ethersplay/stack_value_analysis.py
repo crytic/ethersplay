@@ -7,6 +7,7 @@ import itertools
 
 from binaryninja import HighlightStandardColor
 from binaryninja.interaction import IntegerField, ChoiceField, get_form_input
+from binaryninja.function import InstructionTextToken
 
 import sys
 # VSA is heavy in recursion 
@@ -36,17 +37,21 @@ class AbsStackElem(object):
     def __init__(self):
         self._vals = []
 
-    def append(self, txt):
+    def append(self, nbr):
         '''
             Append value to the element
 
         Args:
-            txt (string): hexadecimal representation of the value (or None)
+            nbr (int or long or binaryninja.function.InstructionTextToken or None)
         '''
-        if txt is None:
-            self._vals.append(txt)
+        if not nbr:
+            self._vals.append(None)
+        elif isinstance(nbr, (int, long)):
+            self._vals.append(nbr)
+        elif isinstance(nbr, InstructionTextToken):
+            self._vals.append(long(str(nbr), 16))
         else:
-            self._vals.append(long(str(txt), 16))
+            raise Exception('Wrong type in AbsStackElem.append %s %s'%(str(nbr), type(nbr)))
 
     def get_vals(self):
         '''
@@ -76,7 +81,7 @@ class AbsStackElem(object):
         '''
         newElem = AbsStackElem()
         v1 = self.get_vals()
-        v2 = self.get_vals()
+        v2 = elem.get_vals()
         if not v1 or not v2:
             newElem.set_vals(None)
             return newElem
