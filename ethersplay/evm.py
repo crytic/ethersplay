@@ -401,6 +401,9 @@ def analyze(completion_event):
                     # If there is no constant, just keep going.
                     continue
 
+                if hash_constant.constant < view.end:
+                    continue
+
                 stack_var = hash_constant.get_var_for_stack_location(
                     stack_offset
                 )
@@ -430,12 +433,6 @@ def analyze(completion_event):
                 else:
                     method_name = hash_value
 
-                # XXX: We create a symbol at the hash value's location. This
-                # _could_ potentially end up being a value within the address
-                # space of the code, but it's super unlikely. It just needs to
-                # have some address. Perhaps adding a large value to it like
-                # 0x8000000000000000 would ensure it isn't an issue later.
-                #
                 # We use SymbolType.ImportedFunctionSymbol because it will
                 # change the font color to orange. Gives it a little "pop"!
                 #
