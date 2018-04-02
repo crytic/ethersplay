@@ -4,6 +4,7 @@
 '''
 
 import itertools
+import time
 
 from binaryninja import HighlightStandardColor
 from binaryninja.interaction import IntegerField, ChoiceField, get_form_input
@@ -172,7 +173,7 @@ class Stack(object):
         Args:
             Stack: stack to copy
         '''
-        self._elems = [x for x in stack.get_elems()]
+        self._elems = [x.get_copy() for x in stack.get_elems()]
 
     def push(self, elem):
         '''
@@ -191,9 +192,9 @@ class Stack(object):
             Pop an element.
         Returns:
             AbsStackElem
-        Note:
-            This should not be called on an empty stack. If it happens the analysis may be lost.
         '''
+        if not self._elems:
+            self.push(None)
         return self._elems.pop()
 
     def swap(self, n):
@@ -259,8 +260,7 @@ class Stack(object):
         else:
             longStack = elems2
             shortStack = elems1
-        for i in xrange(0, len(longStack)):
-            longStack[i] = longStack[i].get_copy()
+        longStack = [x.get_copy() for x in longStack]
         # Merge elements
         for i in xrange(0, len(shortStack)):
             longStack[-(i+1)] = longStack[-(i+1)].merge(shortStack[-(i+1)])
@@ -290,6 +290,8 @@ class Stack(object):
         Returns:
             AbsStackElem
         '''
+        if not self._elems:
+            self.push(None)
         return self._elems[-1]
 
     def __str__(self):
@@ -453,7 +455,7 @@ class StackValueAnalysis(object):
 
 
 
-    def __init__(self, view, func, maxiteration=20, maxexploration=100, print_values=False):
+    def __init__(self, view, func, maxiteration=100, maxexploration=10, print_values=False, plugin=False):
         '''
         Args:
             view (binaryninja.binaryview.BinaryView)
@@ -468,7 +470,7 @@ class StackValueAnalysis(object):
         self.all_discovered_targets = {}
         self.func = func
         self.view = view
-        self.stacksOut = {} # we keep only the stack representing the last ins of a bb
+        self.stacksOut = {}
         self.bb_counter = {} # bb counter, to bound the bb exploration
         self.counter = 0 # number of time the function was analysis, to bound the analysis recursion
         # limit the number of time we re-analyze a function
@@ -476,6 +478,7 @@ class StackValueAnalysis(object):
         # limit the number of time we explore a basic block (unrool)
         self.MAXEXPLORATION = maxexploration
         self.print_values = print_values
+        self.plugin = plugin
 
     def is_jumpdst(self, addr):
         '''
@@ -507,6 +510,9 @@ class StackValueAnalysis(object):
         '''
         last_jump = None
         addr = bb.start
+        size = 0
+        saved_stack = Stack()
+        saved_stack.copy_stack(stack)
         for (ins, size) in bb.__iter__():
             last_jump = None
             if self.print_values:
@@ -538,18 +544,28 @@ class StackValueAnalysis(object):
                 for _ in xrange(0, n_push):
                     stack.push(None)
 
+            saved_stack = Stack()
+            saved_stack.copy_stack(stack)
+            self.stacksOut[addr] = saved_stack
+
             addr += size
 
-        saved_stack = Stack()
-        saved_stack.copy_stack(stack)
-        self.stacksOut[bb.end - 1] = saved_stack
         return last_jump
+
+    def end_bb(self, bb):
+        addr = bb.start
+        size = 0
+        for (_, size) in bb.__iter__():
+            addr += size
+        addr -= size
+        return addr
 
     def _transfer_func(self, bb, init=False):
         '''
             Transfer function
         '''
         addr = bb.start
+        end = self.end_bb(bb)
 
         # bound the number of times we analyze a BB
         if not addr in self.bb_counter:
@@ -560,8 +576,8 @@ class StackValueAnalysis(object):
                 return
 
         # Check if the bb was already analyzed (used for convergence)
-        if (bb.end - 1) in self.stacksOut:
-            prev_stack = self.stacksOut[bb.end - 1]
+        if (end) in self.stacksOut:
+            prev_stack = self.stacksOut[end]
         else:
             prev_stack = None
 
@@ -601,13 +617,13 @@ class StackValueAnalysis(object):
             pass
         op = str(ins[0][0]).replace(' ', '')
         if op == 'JUMP':
-            src = bb.end-1
+            src = end
             dst = last_jump.get_vals()
             if dst:
                 dst = [x for x in dst if x and self.is_jumpdst(x)]
                 self.add_branches(src, dst)
         elif op == 'JUMPI':
-            src = bb.end-1
+            src = end
             dst = last_jump.get_vals()
             if dst:
                 dst = [x for x in dst if x and self.is_jumpdst(x)]
@@ -616,7 +632,7 @@ class StackValueAnalysis(object):
         # check for convergence
         converged = False
         if prev_stack:
-            if prev_stack.equals(self.stacksOut[bb.end - 1]):
+            if prev_stack.equals(self.stacksOut[end]):
                 converged = True
         if not converged:
             for son in bb.outgoing_edges:
@@ -647,7 +663,11 @@ class StackValueAnalysis(object):
         for (src, dst) in self.all_discovered_targets.iteritems():
             branches = [(self.func.arch, x) for x in dst]
             self.func.set_user_indirect_branches(src, branches)
-        self.view.update_analysis_and_wait()
+        if self.plugin:
+            self.view.update_analysis()
+            time.sleep(5)
+        else:
+            self.view.update_analysis_and_wait()
 
     def explore_new(self):
         '''
@@ -660,6 +680,7 @@ class StackValueAnalysis(object):
         if not self.last_discovered_targets:
             return
         self._update_func()
+
         # only explore new targets discovered
         to_explore = []
         for (_, dsts) in self.last_discovered_targets.iteritems():
@@ -696,7 +717,10 @@ class StackValueAnalysis(object):
             else:
                 if bb.highlight == HighlightStandardColor.RedHighlightColor:
                     bb.set_user_highlight(HighlightStandardColor.NoHighlightColor)
-        self.view.update_analysis_and_wait()
+        if self.plugin:
+            self.view.update_analysis()
+        else:
+            self.view.update_analysis_and_wait()
 
 
     def explore(self):
@@ -713,7 +737,7 @@ def function_dynamic_jump_start(view, func):
         print "This plugin works only for EVM bytecode"
         return
     print "VSA on "+func.name
-    sv = StackValueAnalysis(view, func)
+    sv = StackValueAnalysis(view, func, 100, 10)
     sv.explore()
 
 def function_dynamic_jump_parameterisable_start(view, func):
@@ -730,5 +754,5 @@ def function_dynamic_jump_parameterisable_start(view, func):
     maxexploration = 100 if not maxexploration.result else maxexploration.result
     print_values = False if print_values.result == 0 else True
 
-    sv = StackValueAnalysis(view, func, maxiteration, maxexploration, print_values)
+    sv = StackValueAnalysis(view, func, maxiteration, maxexploration, print_values, True)
     sv.explore()
