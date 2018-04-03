@@ -7,6 +7,7 @@ from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
                          LowLevelILLabel, MediumLevelILOperation, RegisterInfo,
                          SegmentFlag, SSAVariable, Symbol, SymbolType)
 from evmasm import EVMAsm
+from evmvisitor import EVMVisitor
 from known_hashes import knownHashes
 
 
@@ -97,9 +98,9 @@ def push(il, addr, imm):
 def mstore(il, addr, imm):
     il.append(il.set_reg(8, LLIL_TEMP(0), il.pop(8)))
     il.append(il.set_reg(8, LLIL_TEMP(1), il.pop(8)))
-    il.append(
-        il.store(8, il.unimplemented(), il.reg(8, LLIL_TEMP(1)))
-    )
+    # il.append(
+    #     il.store(8, il.unimplemented(), il.reg(8, LLIL_TEMP(1)))
+    # )
     return []
 
 
@@ -316,6 +317,41 @@ class EVMView(BinaryView):
         return 0
 
 
+def build_bb_lookup_table(mlil_function):
+    lookup_table = [None] * len(mlil_function)
+    for bb in mlil_function:
+        for i in xrange(bb.start, bb.end):
+            lookup_table[i] = bb
+    return lookup_table
+
+
+def get_stack_def_for_offset(il, stack_offset):
+    dispatcher = il.function.non_ssa_form
+
+    stack_var = il.get_var_for_stack_location(
+        stack_offset
+    )
+
+    stack_var_version = il.get_ssa_var_version(
+        stack_var
+    )
+
+    ssa_stack_var = SSAVariable(stack_var, stack_var_version)
+
+    hash_def = dispatcher.get_ssa_var_definition(
+        ssa_stack_var
+    )
+
+    hash_il = dispatcher[hash_def] if hash_def is not None else None
+
+    if (hash_il is None or hash_il.src.operation not in
+            (MediumLevelILOperation.MLIL_CONST,
+             MediumLevelILOperation.MLIL_CONST_PTR)):
+        return None
+
+    return hash_il.src
+
+
 def analyze(completion_event):
     view = completion_event.view
 
@@ -329,143 +365,91 @@ def analyze(completion_event):
 
     dispatch_functions = []
 
+    dispatcher = view.get_function_at(0).medium_level_il
+
+    il_bb_lookup = build_bb_lookup_table(dispatcher)
+
     # Iterate over all of the MLIL instructions and find all the JUMPI
     # instructions.
-    for il in view.mlil_instructions:
-        var_ops = (
-            MediumLevelILOperation.MLIL_VAR_SSA,
-            MediumLevelILOperation.MLIL_VAR_ALIASED
-        )
-
-        function = il.function.source_function
-
-        il_func = il.function
-
+    current_bb = dispatcher.basic_blocks[0]
+    while current_bb:
+        il = current_bb[-1]
         if il.operation == MediumLevelILOperation.MLIL_IF:
-            condition = il.condition.ssa_form
+            visitor = EVMVisitor(lookup=il_bb_lookup)
+            visit_result = visitor.visit(il)
 
-            # if conditions will always be a temp MLIL_VAR
-            if condition.operation not in var_ops:
+            if visit_result is None:
+                current_bb = il_bb_lookup[il.false]
                 continue
 
-            condition_def = il_func.get_ssa_var_definition(condition.src)
+            value, hash_constant = visit_result
 
-            if condition_def is None:
-                continue
+            # Locate the definition of the hash value so we can set
+            # the int display type of the hash to a pointer. This
+            # will let us display the hash name there as a different
+            # color.
+            stack_offset = dispatcher.source_function.get_reg_value_at(
+                hash_constant.address, 'sp'
+            ).offset
 
-            def_il = il_func[condition_def].src.ssa_form
+            hash_il = get_stack_def_for_offset(hash_constant, stack_offset)
 
-            # The temp variable _should_ be assigned another variable,
-            # but just in case it isn't we won't assume it to be so
-            # and go ahead and check for it here.
-            if def_il.operation in var_ops:
-                condition_def = il_func.get_ssa_var_definition(def_il.src)
+            if hash_il is None:
+                stack_offset += 8
+                hash_il = get_stack_def_for_offset(hash_constant, stack_offset)
 
-                if condition_def is None:
-                    continue
+            hash_value = '#{:08x}'.format(value)
 
-                print condition_def, il_func[condition_def]
+            # XXX: knownHashes uses a string of the hex as a key, it
+            # is probably faster to use an int
+            hash_hex = hex(value).replace('L', '')
 
-                def_il = il_func[condition_def].src
+            # Find the method name if it's known. Otherwise, just use
+            # the hash.
+            if hash_hex in knownHashes:
+                method_name = knownHashes[hash_hex]
+            else:
+                method_name = hash_value
 
-            # For dispatch functions, we're looking for a equality comparison
-            # of the function signature's hash. Determine if either side
-            # of the comparison is a constant, and then look it up.
-            if def_il.operation == MediumLevelILOperation.MLIL_CMP_E:
-                left = def_il.left
-                right = def_il.right
-
-                if left.operation == MediumLevelILOperation.MLIL_CONST:
-                    hash_constant = left
-
-                    # Locate the definition of the hash value so we can set
-                    # the int display type of the hash to a pointer. This
-                    # will let us display the hash name there as a different
-                    # color.
-                    stack_offset = function.get_reg_value_at(
-                        hash_constant.address, 'sp'
-                    ).offset
-
-                elif right.operation == MediumLevelILOperation.MLIL_CONST:
-                    hash_constant = right
-
-                    # Locate the definition of the hash value so we can set
-                    # the int display type of the hash to a pointer. This
-                    # will let us display the hash name there as a different
-                    # color.
-                    stack_offset = function.get_reg_value_at(
-                        hash_constant.address, 'sp'
-                    ).offset + 8
-
-                else:
-                    # If there is no constant, just keep going.
-                    continue
-
-                if hash_constant.constant < view.end:
-                    continue
-
-                stack_var = hash_constant.get_var_for_stack_location(
-                    stack_offset
-                )
-
-                stack_var_version = hash_constant.get_ssa_var_version(
-                    stack_var
-                )
-
-                ssa_stack_var = SSAVariable(stack_var, stack_var_version)
-
-                hash_def = il_func.get_ssa_var_definition(
-                    ssa_stack_var
-                )
-
-                hash_il = il_func[hash_def]
-
-                hash_value = '#{:08x}'.format(hash_constant.constant)
-
-                # XXX: knownHashes uses a string of the hex as a key, it
-                # is probably faster to use an int
-                hash_hex = hex(hash_constant.constant).replace('L', '')
-
-                # Find the method name if it's known. Otherwise, just use
-                # the hash.
-                if hash_hex in knownHashes:
-                    method_name = knownHashes[hash_hex]
-                else:
-                    method_name = hash_value
-
-                # We use SymbolType.ImportedFunctionSymbol because it will
-                # change the font color to orange. Gives it a little "pop"!
-                #
-                # ...yeah that's some stack humor for you.
-                view.define_user_symbol(
-                    Symbol(
-                        SymbolType.ImportedFunctionSymbol,
-                        hash_constant.constant,
-                        '#{:08x} -> {}'.format(
-                            hash_constant.constant, method_name
-                        )
+            # We use SymbolType.ImportedFunctionSymbol because it will
+            # change the font color to orange. Gives it a little "pop"!
+            #
+            # ...yeah that's some stack humor for you.
+            view.define_user_symbol(
+                Symbol(
+                    SymbolType.ImportedFunctionSymbol,
+                    value,
+                    '{} -> {}'.format(
+                        hash_value, method_name
                     )
                 )
+            )
 
+            if hash_il is not None:
                 # Change the hash operand to display the Symbol.
-                function.set_int_display_type(
+                dispatcher.source_function.set_int_display_type(
                     hash_il.address,
                     hash_constant.constant,
                     0,
                     IntegerDisplayType.PointerDisplayType
                 )
 
-                # The dispatched function is down the True branch.
-                target = il_func[il.true]
+            # The dispatched function is down the True branch.
+            target = dispatcher[il.true]
 
-                # Make a function at the instruction following the
-                # JUMPTARGET instruction. This makes the control flow graph
-                # "fall through" to the function, pruning those basic blocks
-                # from the dispatcher function.
-                if target.operation == MediumLevelILOperation.MLIL_JUMP_TO:
-                    dispatch_functions.append(
-                        (target.dest.constant + 1, method_name)
-                    )
+            # Make a function at the instruction following the
+            # JUMPTARGET instruction. This makes the control flow graph
+            # "fall through" to the function, pruning those basic blocks
+            # from the dispatcher function.
+            if target.operation == MediumLevelILOperation.MLIL_JUMP_TO:
+                dispatch_functions.append(
+                    (target.dest.constant + 1, method_name)
+                )
+
+            current_bb = il_bb_lookup[il.false]
+
+        else:
+            current_bb = None
 
     # Go over all the functions we noted above and actually create the function
     # there. We do this last to make sure that view.mlil_instructions doesn't
