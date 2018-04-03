@@ -279,6 +279,12 @@ class EVM(Architecture):
 
         return instruction.size
 
+    def assemble(self, code, addr=0):
+        try:
+            return EVMAsm.assemble(code, addr), ''
+        except Exception as e:
+            return None, e.message
+
 
 class EVMView(BinaryView):
     name = "EVM"
