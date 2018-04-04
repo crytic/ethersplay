@@ -19,15 +19,16 @@ ln -s <your_download_location>/ethersplay/ethersplay .
 
 ## How to Use
 
-Ethersplay takes as input the evm bytecode in either ascii hex encoded or raw binary format.
+Ethersplay takes as input the evm bytecode in raw binary format. Prepend the file with the header `EVM`, as shown below:
+![EVM Header](/images/evm_header.png)
  
-To have the bytecode of a solidity file, use solc:
+To have the bytecode of a solidity file, use `solc`:
 - `solc --bin-runtime file.sol`: to print the bytecode of the runtime part of the contract (for most of the cases).
 - `solc --bin file.sol`: to print the initialisation bytecode of the contract (constructor),
 
-Prefix the output from solc with '0x' and then save it with the extension `.evm` or `.bytecode`.
 
-Example using test.sol with following contents:
+
+Example using `test.sol` with following contents:
 ```test.sol:
 contract Test {
     uint256 value;
@@ -51,13 +52,9 @@ Binary of the runtime part:
 60606040523615603d576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063b0f2b72a146041575b5b5b005b3415604b57600080fd5b605f60048080359060200190919050506061565b005b806000819055505b505600a165627a7a72305820c177a64bf54a26574918ddc2201f7ab2dd8619d6c3ee87ce9aaa1eb0e0b1d4650029
 ```
 
-Create test.evm with the last part of the solc output prefixed with 0x:
-```test.evm:
-0x60606040523615603d576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063b0f2b72a146041575b5b5b005b3415604b57600080fd5b605f60048080359060200190919050506061565b005b806000819055505b505600a165627a7a72305820c177a64bf54a26574918ddc2201f7ab2dd8619d6c3ee87ce9aaa1eb0e0b1d4650029
-```
+Copy the ascii hex string, and then create a new file in Binary Ninja. Type into the file `EVM`, then right-click and select `Paste From -> Raw Hex`. The output should look identical to the earlier example image. Save this file as `test.evm` and close it.
 
-test.evm can be loaded into Binary Ninja
-
+`test.evm` can now be loaded into Binary Ninja
 
 ## Automatic analyses
 
@@ -82,5 +79,5 @@ The source code file has to be in the same directory than the `*.asm.json` file.
 Color the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
 
 ## Known issues
-- Opening more than one bytecode file generates the wrong CFG
+- Some branches are still undiscovered, but can be manually added with [Function.set_user_indirect_branches](https://api.binary.ninja/binaryninja.function-module.html#binaryninja.function.Function.set_user_indirect_branches)
 - `EVM Source Code` was tested with solc 0.4.16. It is not compatible with other versions.
