@@ -455,7 +455,7 @@ class StackValueAnalysis(object):
 
 
 
-    def __init__(self, view, func, maxiteration=100, maxexploration=10, print_values=False, plugin=False):
+    def __init__(self, view, func, maxiteration=100, maxexploration=10, print_values=False, initStack=None):
         '''
         Args:
             view (binaryninja.binaryview.BinaryView)
@@ -470,6 +470,7 @@ class StackValueAnalysis(object):
         self.all_discovered_targets = {}
         self.func = func
         self.view = view
+        self.stacksIn = {}
         self.stacksOut = {}
         self.bb_counter = {} # bb counter, to bound the bb exploration
         self.counter = 0 # number of time the function was analysis, to bound the analysis recursion
@@ -478,7 +479,7 @@ class StackValueAnalysis(object):
         # limit the number of time we explore a basic block (unrool)
         self.MAXEXPLORATION = maxexploration
         self.print_values = print_values
-        self.plugin = plugin
+        self.initStack = initStack
 
     def is_jumpdst(self, addr):
         '''
@@ -494,7 +495,43 @@ class StackValueAnalysis(object):
         ins = self.view.get_disassembly(addr)
         return ins == 'JUMPDEST'
 
-    def _update_stack(self, bb, stack):
+    def stub(self, ins, addr, stack):
+        return (False, None)
+
+    def _transfer_func_ins(self, ins, addr, stackIn):
+        stack = Stack()
+        stack.copy_stack(stackIn)
+
+        (is_stub, stub_ret) = self.stub(ins, addr, stack)
+        if is_stub:
+            return stub_ret
+
+        op = str(ins[0]).replace(' ', '')
+        if op.startswith('PUSH'):
+            stack.push(ins[1])
+        elif op.startswith('SWAP'):
+            nth_elem = int(op[4])
+            stack.swap(nth_elem)
+        elif op.startswith('DUP'):
+            nth_elem = int(op[3])
+            stack.dup(nth_elem)
+        elif op == 'AND':
+            v1 = stack.pop()
+            v2 = stack.pop()
+            stack.push(v1.absAnd(v2))
+        # For all the other opcode: remove
+        # the pop elements, and push None elements
+        # if JUMP or JUMPI saves the last value before poping
+        else:
+            (n_pop, n_push) = self.table[op]
+            for _ in xrange(0, n_pop):
+                stack.pop()
+            for _ in xrange(0, n_push):
+                stack.push(None)
+
+        return stack
+
+    def _explore_bb(self, bb, stack):
         '''
             Update the stack of a basic block. Return the last jump/jumpi target
 
@@ -511,61 +548,40 @@ class StackValueAnalysis(object):
         last_jump = None
         addr = bb.start
         size = 0
-        saved_stack = Stack()
-        saved_stack.copy_stack(stack)
+
         for (ins, size) in bb.__iter__():
-            last_jump = None
             if self.print_values:
                 self.func.set_comment(addr, "STACK " + str(stack))
-        #    print hex(addr) + " "+self.func.name + " " + str(self.bb_counter[bb.start])
-            op = str(ins[0]).replace(' ', '')
-            if op.startswith('PUSH'):
-                stack.push(ins[1])
-            elif op.startswith('SWAP'):
-                nth_elem = int(op[4])
-                stack.swap(nth_elem)
-            elif op.startswith('DUP'):
-                nth_elem = int(op[3])
-                stack.dup(nth_elem)
-            elif op == 'AND':
-                v1 = stack.pop()
-                v2 = stack.pop()
-                stack.push(v1.absAnd(v2))
 
-            # For all the other opcode: remove
-            # the pop elements, and push None elements
-            # if JUMP or JUMPI saves the last value before poping
-            else:
-                if op == 'JUMP' or op == 'JUMPI':
-                    last_jump = stack.top()
-                (n_pop, n_push) = self.table[op]
-                for _ in xrange(0, n_pop):
-                    stack.pop()
-                for _ in xrange(0, n_push):
-                    stack.push(None)
+            self.stacksIn[addr] = stack
+            stack = self._transfer_func_ins(ins, addr, stack)
 
-            saved_stack = Stack()
-            saved_stack.copy_stack(stack)
-            self.stacksOut[addr] = saved_stack
-
+            self.stacksOut[addr] = stack
             addr += size
 
+        if ins:
+            # if we are going to do a jump / jumpi
+            # get the destination
+            op = str(ins[0]).replace(' ', '')
+            if op == 'JUMP' or op == 'JUMPI':
+                last_jump = stack.top()
         return last_jump
 
     def end_bb(self, bb):
         addr = bb.start
         size = 0
-        for (_, size) in bb.__iter__():
+        ins = None
+        for (ins, size) in bb.__iter__():
             addr += size
         addr -= size
-        return addr
+        return (addr, ins)
 
-    def _transfer_func(self, bb, init=False):
+    def _transfer_func_bb(self, bb, init=False):
         '''
             Transfer function
         '''
         addr = bb.start
-        end = self.end_bb(bb)
+        (end, end_ins) = self.end_bb(bb)
 
         # bound the number of times we analyze a BB
         if not addr in self.bb_counter:
@@ -585,7 +601,10 @@ class StackValueAnalysis(object):
         # We merge only father that were already analyzed
         fathers = bb.incoming_edges
         fathers = [x.source  for x in fathers]
-        stack = Stack()
+        if init and self.initStack:
+            stack = self.initStack
+        else:
+            stack = Stack()
         if len(fathers) > 1 and not init:
             i = 0
             d_start = None
@@ -609,22 +628,19 @@ class StackValueAnalysis(object):
                 return
 
         # Analyze the BB
-        last_jump = self._update_stack(bb, stack)
+        self._explore_bb(bb, stack)
 
         # check if the last instruction is a JUMP
-        item = bb.__iter__()
-        for ins in item:
-            pass
-        op = str(ins[0][0]).replace(' ', '')
+        op = str(end_ins[0]).replace(' ', '')
         if op == 'JUMP':
             src = end
-            dst = last_jump.get_vals()
+            dst = self.stacksIn[end].top().get_vals()
             if dst:
                 dst = [x for x in dst if x and self.is_jumpdst(x)]
                 self.add_branches(src, dst)
         elif op == 'JUMPI':
             src = end
-            dst = last_jump.get_vals()
+            dst = self.stacksIn[end].top().get_vals()
             if dst:
                 dst = [x for x in dst if x and self.is_jumpdst(x)]
                 self.add_branches(src, dst)
@@ -637,7 +653,7 @@ class StackValueAnalysis(object):
         if not converged:
             for son in bb.outgoing_edges:
                 son = son.target
-                self._transfer_func(son)
+                self._transfer_func_bb(son)
 
     def add_branches(self, src, dst):
         '''
@@ -663,11 +679,7 @@ class StackValueAnalysis(object):
         for (src, dst) in self.all_discovered_targets.iteritems():
             branches = [(self.func.arch, x) for x in dst]
             self.func.set_user_indirect_branches(src, branches)
-        if self.plugin:
-            self.view.update_analysis()
-            time.sleep(5)
-        else:
-            self.view.update_analysis_and_wait()
+        self.view.update_analysis_and_wait()
 
     def explore_new(self):
         '''
@@ -675,7 +687,7 @@ class StackValueAnalysis(object):
         '''
         self.counter = self.counter + 1
         # Bound the recursion
-        if self.counter == self.MAXITERATION:
+        if self.counter >= self.MAXITERATION:
             return
         if not self.last_discovered_targets:
             return
@@ -690,69 +702,44 @@ class StackValueAnalysis(object):
             self.bb_counter = {}
             bb = self.func.get_basic_block_at(dst)
             if bb:
-                self._transfer_func(bb)
+                self._transfer_func_bb(bb)
         self.explore_new()
-
-    def color_unanalyzed_bbs(self):
-        '''
-            Color in red BB that were not analyzed.
-            Heuristic: bb is not analyzed if it ends with a
-            JUMP with no outgoing branch or a JUMPI with a number of branches
-            different to 2.
-        '''
-        for bb in self.func.basic_blocks:
-            item = bb.__iter__()
-            for ins in item:
-                pass
-            op = str(ins[0][0]).replace(' ', '')
-            flag = False
-            if op == 'JUMP':
-                if len(list(bb.outgoing_edges)) == 0:
-                    flag = True
-            elif op == 'JUMPI':
-                if len(list(bb.outgoing_edges)) != 2:
-                    flag = True
-            if flag:
-                bb.set_user_highlight(HighlightStandardColor.RedHighlightColor)
-            else:
-                if bb.highlight == HighlightStandardColor.RedHighlightColor:
-                    bb.set_user_highlight(HighlightStandardColor.NoHighlightColor)
-        if self.plugin:
-            self.view.update_analysis()
-        else:
-            self.view.update_analysis_and_wait()
-
 
     def explore(self):
         """
             Launch the analysis
         """
         self.bb_counter = {}
-        self._transfer_func(self.func.get_basic_block_at(self.func.start), True)
+        self._transfer_func_bb(self.func.get_basic_block_at(self.func.start), True)
         self.explore_new()
-        self.color_unanalyzed_bbs()
+
+        # Binja does not allow to save any type; None is not accepted
+        # For each stack, the first element is a boolean
+        # If true, the following value are correct
+        # If false, it means that it was a None
+        def filter_vals(vals):
+            if None in vals:
+                return [False, 0]
+            return [True] + [float(x) for x in vals]
+
+        stacksOut = {}
+        for (k,v) in self.stacksOut.iteritems():
+            elems = v.get_elems()
+            elems = [filter_vals(x.get_vals()) for x in elems]
+            stacksOut[k] = elems
+        
+        # The stack value are saved at key func_name.out
+        self.view.store_metadata(self.func.name+".out", stacksOut)
+        self.view.modified = True
+
+
 
 def function_dynamic_jump_start(view, func):
     if func.arch.name != 'evm':
         print "This plugin works only for EVM bytecode"
         return
-    print "VSA on "+func.name
+    print "JMP recovery on "+func.name
     sv = StackValueAnalysis(view, func, 100, 10)
     sv.explore()
 
-def function_dynamic_jump_parameterisable_start(view, func):
-    if func.arch.name != 'evm':
-        print "This plugin works only for EVM bytecode"
-        return
 
-    maxiteration = IntegerField("# of analyze iteration (default 20)")
-    maxexploration = IntegerField('# of BB re-exploration (default 100)')
-    print_values = ChoiceField("Print Stack Values (print up to 5 values)", ["No", "Yes"])
-    get_form_input(["Analysis Parameters", maxiteration, maxexploration, print_values], "")
-
-    maxiteration = 20 if not maxiteration.result else maxiteration.result
-    maxexploration = 100 if not maxexploration.result else maxexploration.result
-    print_values = False if print_values.result == 0 else True
-
-    sv = StackValueAnalysis(view, func, maxiteration, maxexploration, print_values, True)
-    sv.explore()
