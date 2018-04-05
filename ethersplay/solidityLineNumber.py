@@ -6,6 +6,7 @@ import json
 import re
 import math
 
+
 class SolidityLineNumber(object):
     """
         This module matches the EVM bytecode to its source code
@@ -20,7 +21,6 @@ class SolidityLineNumber(object):
         self.contracts = {}
         self._parse()
         self._compute_line_number()
-
 
     def _parse(self):
         f = open(os.path.join(self.workspace, self.filename))
@@ -47,8 +47,8 @@ class SolidityLineNumber(object):
 
     @staticmethod
     def _get_name(contract):
-        ## ======= X.sol:Y =======
-        ## -> X.sol , Y
+        # ======= X.sol:Y =======
+        # -> X.sol , Y
         r = re.compile(r'([a-zA-Z0-9_.]*):(\w*)')
         res = r.search(contract)
         assert len(res.groups()) == 2
@@ -76,7 +76,6 @@ class SolidityLineNumber(object):
                     return 2
         return 1
 
-
     def _save_node(self, code, filename, contract_name):
         addr = 0
         # push [tag] can be push1 or push2, ..
@@ -84,7 +83,7 @@ class SolidityLineNumber(object):
         size_push_tag = self._get_size_push_tag(code)
         for c in code:
             c['addr'] = addr
-            if c['name'] == 'tag': # tag does not exist in the bytecode
+            if c['name'] == 'tag':  # tag does not exist in the bytecode
                 continue
             if not c['name'].startswith('PUSH'):
                 addr += 1
@@ -134,4 +133,3 @@ class SolidityLineNumber(object):
                         node['line_number_end'],
                         node['source_description'])
         return None
-
