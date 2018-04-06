@@ -6,13 +6,13 @@ from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
                          InstructionTextTokenType, LowLevelILLabel,
                          LowLevelILOperation, RegisterInfo, SegmentFlag)
 
-from .common import EVM_HEADER
+from .common import EVM_HEADER, ADDR_SIZE
 from .evmasm import EVMAsm
 from .analysis import analyze_invalid_jumps
 
 
 def jumpi(il, addr, imm):
-    dest = il.pop(8)
+    dest = il.pop(ADDR_SIZE)
 
     if len(il) > 0:
         push = il[len(il)-1]
@@ -22,8 +22,8 @@ def jumpi(il, addr, imm):
     if (push is not None and
             push.operation == LowLevelILOperation.LLIL_PUSH and
             push.src.operation == LowLevelILOperation.LLIL_CONST):
-        dest = il.const(8, push.src.constant)
-        il.append(il.set_reg(8, LLIL_TEMP(0), il.pop(8)))
+        dest = il.const(ADDR_SIZE, push.src.constant)
+        il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
 
     t = LowLevelILLabel()
     f = il.get_label_for_address(Architecture['EVM'], addr+1)
@@ -36,18 +36,18 @@ def jumpi(il, addr, imm):
     # We need to use a temporary register here. The il.if_expr() helper
     # function makes a tree and evaluates the condition's il.pop()
     # first, but dest needs to be first.
-    il.append(il.set_reg(8, LLIL_TEMP(addr), dest))
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(addr), dest))
 
-    il.append(il.set_reg(8, LLIL_TEMP(0), il.pop(8)))
-    il.append(il.if_expr(il.reg(8, LLIL_TEMP(0)), t, f))
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
+    il.append(il.if_expr(il.reg(ADDR_SIZE, LLIL_TEMP(0)), t, f))
 
     il.mark_label(t)
-    il.append(il.jump(il.reg(8, LLIL_TEMP(addr))))
+    il.append(il.jump(il.reg(ADDR_SIZE, LLIL_TEMP(addr))))
 
     if must_mark:
         il.mark_label(f)
         # false is the fall through case
-        il.append(il.jump(il.const(8, addr + 1)))
+        il.append(il.jump(il.const(ADDR_SIZE, addr + 1)))
 
     return []
 
@@ -55,47 +55,61 @@ def jumpi(il, addr, imm):
 def dup(il, addr, distance):
     il.append(
         il.set_reg(
-            8, LLIL_TEMP(0), il.load(
-                8, il.add(
-                    8, il.reg(8, 'sp'), il.const(8, (distance - 1) * 8)
+            ADDR_SIZE, LLIL_TEMP(0), il.load(
+                ADDR_SIZE, il.add(
+                    ADDR_SIZE, il.reg(ADDR_SIZE, 'sp'),
+                    il.const(ADDR_SIZE, (distance - 1) * ADDR_SIZE)
                 )
             )
         )
     )
 
-    il.append(il.push(8, il.reg(8, LLIL_TEMP(0))))
+    il.append(il.push(ADDR_SIZE, il.reg(ADDR_SIZE, LLIL_TEMP(0))))
 
     return []
 
 
 def swap(il, addr, distance):
-    stack_offset = distance * 8
+    stack_offset = distance * ADDR_SIZE
 
     load = il.load(
-        8, il.add(
-            8, il.reg(8, 'sp'), il.const(8, stack_offset)
+        ADDR_SIZE, il.add(
+            ADDR_SIZE,
+            il.reg(ADDR_SIZE, 'sp'),
+            il.const(ADDR_SIZE, stack_offset)
         )
     )
 
-    il.append(il.set_reg(8, LLIL_TEMP(0), load))
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), load))
 
-    il.append(il.set_reg(8, LLIL_TEMP(1), il.load(8, il.reg(8, 'sp'))))
+    il.append(
+        il.set_reg(
+            ADDR_SIZE, LLIL_TEMP(1),
+            il.load(ADDR_SIZE, il.reg(ADDR_SIZE, 'sp'))
+        )
+    )
 
     il.append(
         il.store(
-            8, il.add(
-                8, il.reg(8, 'sp'), il.const(8, stack_offset)
+            ADDR_SIZE, il.add(
+                ADDR_SIZE, il.reg(ADDR_SIZE, 'sp'),
+                il.const(ADDR_SIZE, stack_offset)
             ),
-            il.reg(8, LLIL_TEMP(1))
+            il.reg(ADDR_SIZE, LLIL_TEMP(1))
         )
     )
-    il.append(il.store(8, il.reg(8, 'sp'), il.reg(8, LLIL_TEMP(0))))
+    il.append(
+        il.store(
+            ADDR_SIZE, il.reg(ADDR_SIZE, 'sp'),
+            il.reg(ADDR_SIZE, LLIL_TEMP(0))
+        )
+    )
 
     return []
 
 
 def jump(il, addr, imm):
-    dest = il.pop(8)
+    dest = il.pop(ADDR_SIZE)
 
     if len(il) > 0:
         push = il[len(il)-1]
@@ -105,46 +119,58 @@ def jump(il, addr, imm):
     if (push is not None and
             push.operation == LowLevelILOperation.LLIL_PUSH and
             push.src.operation == LowLevelILOperation.LLIL_CONST):
-        dest = il.const(8, push.src.constant)
-        il.append(il.set_reg(8, LLIL_TEMP(0), il.pop(8)))
+        dest = il.const(ADDR_SIZE, push.src.constant)
+        il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
 
     # We need to use a temporary register here. The il.if_expr() helper
     # function makes a tree and evaluates the condition's il.pop()
     # first, but dest needs to be first.
-    il.append(il.set_reg(8, LLIL_TEMP(addr), dest))
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(addr), dest))
 
-    il.append(il.jump(il.reg(8, LLIL_TEMP(addr))))
+    il.append(il.jump(il.reg(ADDR_SIZE, LLIL_TEMP(addr))))
 
     return []
 
 
 def push(il, addr, imm):
-    return il.push(8, il.const(8, imm & 0xffffffffffffffff))
+    return il.push(ADDR_SIZE, il.const(ADDR_SIZE, imm))
 
 
 def mstore(il, addr, imm):
-    il.append(il.set_reg(8, LLIL_TEMP(0), il.pop(8)))
-    il.append(il.set_reg(8, LLIL_TEMP(1), il.pop(8)))
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(1), il.pop(ADDR_SIZE)))
     # il.append(
-    #     il.store(8, il.unimplemented(), il.reg(8, LLIL_TEMP(1)))
+    #     il.store(
+    #         ADDR_SIZE,
+    #         il.unimplemented(),
+    #         il.reg(ADDR_SIZE, LLIL_TEMP(1))
+    #     )
     # )
     return []
 
 
 insn_il = {
         'AND': lambda il, addr, imm: il.push(
-            8, il.and_expr(8, il.pop(8), il.pop(8))
+            ADDR_SIZE, il.and_expr(
+                ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
+            )
         ),
         'EQ': lambda il, addr, imm: il.push(
-            8, il.compare_equal(8, il.pop(8), il.pop(8))
+            ADDR_SIZE, il.compare_equal(
+                ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
+            )
         ),
         'LT': lambda il, addr, imm: il.push(
-            8, il.compare_unsigned_less_than(8, il.pop(8), il.pop(8))
+            ADDR_SIZE, il.compare_unsigned_less_than(
+                ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
+            )
         ),
         'ISZERO': lambda il, addr, imm: il.push(
-            8, il.compare_equal(8, il.pop(8), il.const(8, 0))
+            ADDR_SIZE, il.compare_equal(
+                ADDR_SIZE, il.pop(ADDR_SIZE), il.const(ADDR_SIZE, 0)
+            )
         ),
-        'POP': lambda il, addr, imm: il.pop(8),
+        'POP': lambda il, addr, imm: il.pop(ADDR_SIZE),
         'MSTORE': mstore,
         'JUMP': jump,
         'JUMPI': jumpi,
@@ -214,10 +240,10 @@ insn_il = {
         'SWAP16': lambda il, addr, imm: swap(il, addr, 16),
         'STOP': lambda il, addr, imm: il.no_ret(),
         'REVERT': lambda il, addr, imm: il.no_ret(),
-        'RETURN': lambda il, addr, imm: il.ret(il.pop(8)),
+        'RETURN': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
         'INVALID': lambda il, addr, imm: il.no_ret(),
-        'SUICIDE': lambda il, addr, imm: il.ret(il.pop(8)),
-        'SELFDESTRUCT': lambda il, addr, imm: il.ret(il.pop(8)),
+        'SUICIDE': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
+        'SELFDESTRUCT': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
 }
 
 
@@ -225,10 +251,10 @@ class EVM(Architecture):
     name = "EVM"
 
     # Actual size is 32 but we're going to truncate everything
-    address_size = 8
+    address_size = ADDR_SIZE
 
     # should be 32
-    default_int_size = 8
+    default_int_size = ADDR_SIZE
 
     instr_alignment = 1
 
@@ -237,7 +263,7 @@ class EVM(Architecture):
     endianness = Endianness.BigEndian
 
     regs = {
-        "sp": RegisterInfo("sp", 8),
+        "sp": RegisterInfo("sp", ADDR_SIZE),
     }
 
     stack_pointer = "sp"
@@ -291,10 +317,12 @@ class EVM(Architecture):
         if ill is None:
 
             for i in xrange(instruction.pops):
-                il.append(il.set_reg(8, LLIL_TEMP(i), il.pop(8)))
+                il.append(
+                    il.set_reg(ADDR_SIZE, LLIL_TEMP(i), il.pop(ADDR_SIZE))
+                )
 
             for i in xrange(instruction.pushes):
-                il.append(il.push(8, il.unimplemented()))
+                il.append(il.push(ADDR_SIZE, il.unimplemented()))
 
             il.append(il.nop())
 
