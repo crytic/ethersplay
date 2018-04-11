@@ -22,4 +22,3 @@ class PrintStack(object):
 def function_printStack_start(view, func):
     detector = PrintStack(view, func)
     detector.printStack()
-
