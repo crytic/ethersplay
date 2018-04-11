@@ -6,7 +6,7 @@
 import itertools
 import time
 
-from binaryninja import HighlightStandardColor
+from binaryninja import HighlightStandardColor, BackgroundTaskThread
 from binaryninja.interaction import IntegerField, ChoiceField, get_form_input
 from binaryninja.function import InstructionTextToken
 
@@ -50,7 +50,7 @@ class AbsStackElem(object):
         elif isinstance(nbr, (int, long)):
             self._vals.append(nbr)
         elif isinstance(nbr, InstructionTextToken):
-            self._vals.append(long(str(nbr), 16))
+            self._vals.append(nbr.value)
         else:
             raise Exception('Wrong type in AbsStackElem.append %s %s'%(str(nbr), type(nbr)))
 
@@ -549,7 +549,7 @@ class StackValueAnalysis(object):
         addr = bb.start
         size = 0
 
-        for (ins, size) in bb.__iter__():
+        for (ins, size) in bb:
             if self.print_values:
                 self.func.set_comment(addr, "STACK " + str(stack))
 
@@ -733,13 +733,22 @@ class StackValueAnalysis(object):
         self.view.modified = True
 
 
+class DynamicJumpTaskThread(BackgroundTaskThread):
+    def __init__(self, view, function):
+        self.view = view
+        self.function = function
+        BackgroundTaskThread.__init__(self, "Dynamic Jump Analysis", True)
+
+    def run(self):
+        function_dynamic_jump_start(self.view, self.function)
+
+
+def dynamic_jump_analysis(view, func):
+    DynamicJumpTaskThread(view, func).start()
+
 
 def function_dynamic_jump_start(view, func):
-    if func.arch.name != 'evm':
-        print "This plugin works only for EVM bytecode"
-        return
     print "JMP recovery on "+func.name
     sv = StackValueAnalysis(view, func, 100, 10)
     sv.explore()
-
-
+    print "Complete"
