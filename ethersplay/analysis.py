@@ -1,10 +1,11 @@
 from binaryninja import (BackgroundTaskThread, BranchType, IntegerDisplayType,
                          MediumLevelILOperation, SegmentFlag, SSAVariable,
-                         Symbol, SymbolType)
+                         Symbol, SymbolType, BinaryDataNotification)
 
 from .common import EVM_HEADER
 from .evmvisitor import EVMVisitor
 from .known_hashes import knownHashes
+from .stack_value_analysis import dynamic_jump_analysis
 
 
 class QueueAnalysisCompletionTask(BackgroundTaskThread):
@@ -227,3 +228,8 @@ def analyze_jumps(completion_event):
         view.create_user_function(addr)
         dispatch_function = view.get_function_at(addr)
         dispatch_function.name = method_name
+
+
+class DynamicJumpCallback(BinaryDataNotification):
+    def function_updated(self, view, func):
+        dynamic_jump_analysis(view, func)

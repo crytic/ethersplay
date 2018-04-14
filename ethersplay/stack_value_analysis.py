@@ -10,6 +10,8 @@ from binaryninja import HighlightStandardColor, BackgroundTaskThread
 from binaryninja.interaction import IntegerField, ChoiceField, get_form_input
 from binaryninja.function import InstructionTextToken
 
+import patches
+
 import sys
 # VSA is heavy in recursion 
 sys.setrecursionlimit(15000)
@@ -549,6 +551,7 @@ class StackValueAnalysis(object):
         addr = bb.start
         size = 0
 
+        # XXX: BasicBlock.__iter__ is broken in stable.
         for (ins, size) in bb:
             if self.print_values:
                 self.func.set_comment(addr, "STACK " + str(stack))
@@ -677,9 +680,18 @@ class StackValueAnalysis(object):
             Update the function with new branches
         '''
         for (src, dst) in self.all_discovered_targets.iteritems():
-            branches = [(self.func.arch, x) for x in dst]
-            self.func.set_user_indirect_branches(src, branches)
-        self.view.update_analysis_and_wait()
+            existing_branches = {
+                x.dest_addr
+                for x in self.func.get_indirect_branches_at(src)
+            }
+            branches = {x for x in dst}
+
+            # Don't add branches if nothing has changed. This will prevent the
+            # analysis from looping indefinitely on the notification.
+            if existing_branches.issuperset(branches):
+                continue
+
+            self.func.set_user_indirect_branches(src, [(self.func.arch, x) for x in branches])
 
     def explore_new(self):
         '''
@@ -694,11 +706,9 @@ class StackValueAnalysis(object):
         self._update_func()
 
         # only explore new targets discovered
-        to_explore = []
-        for (_, dsts) in self.last_discovered_targets.iteritems():
-            to_explore += dsts
+        to_explore = set().union(*self.last_discovered_targets.values())
         self.last_discovered_targets = {}
-        for dst in set(to_explore):
+        for dst in to_explore:
             self.bb_counter = {}
             bb = self.func.get_basic_block_at(dst)
             if bb:
@@ -717,20 +727,20 @@ class StackValueAnalysis(object):
         # For each stack, the first element is a boolean
         # If true, the following value are correct
         # If false, it means that it was a None
-        def filter_vals(vals):
-            if None in vals:
-                return [False, 0]
-            return [True] + [float(x) for x in vals]
+        # def filter_vals(vals):
+        #     if None in vals:
+        #         return [False, 0]
+        #     return [True] + [float(x) for x in vals]
 
-        stacksOut = {}
-        for (k,v) in self.stacksOut.iteritems():
-            elems = v.get_elems()
-            elems = [filter_vals(x.get_vals()) for x in elems]
-            stacksOut[k] = elems
+        # stacksOut = {}
+        # for (k,v) in self.stacksOut.iteritems():
+        #     elems = v.get_elems()
+        #     elems = [filter_vals(x.get_vals()) for x in elems]
+        #     stacksOut[k] = elems
         
-        # The stack value are saved at key func_name.out
-        self.view.store_metadata(self.func.name+".out", stacksOut)
-        self.view.modified = True
+        # # The stack value are saved at key func_name.out
+        # self.view.store_metadata(self.func.name+".out", stacksOut)
+        # self.view.modified = True
 
 
 class DynamicJumpTaskThread(BackgroundTaskThread):

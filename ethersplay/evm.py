@@ -8,7 +8,7 @@ from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
 
 from .common import EVM_HEADER, ADDR_SIZE
 from .evmasm import EVMAsm
-from .analysis import analyze_invalid_jumps
+from .analysis import analyze_invalid_jumps, DynamicJumpCallback
 
 
 def jumpi(il, addr, imm):
@@ -366,6 +366,8 @@ class EVMView(BinaryView):
         )
 
         self.add_analysis_completion_event(analyze_invalid_jumps)
+        dynamicJumpCallbackNotification = DynamicJumpCallback()
+        self.register_notification(dynamicJumpCallbackNotification)
         return True
 
     @staticmethod
