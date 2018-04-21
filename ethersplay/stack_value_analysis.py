@@ -4,17 +4,14 @@
 '''
 
 import itertools
-import time
-
-from binaryninja import HighlightStandardColor, BackgroundTaskThread
-from binaryninja.interaction import IntegerField, ChoiceField, get_form_input
-from binaryninja.function import InstructionTextToken
-
-import patches
-
 import sys
-# VSA is heavy in recursion 
+
+import patches  # noqa: F401
+from binaryninja import BackgroundTaskThread, InstructionTextToken
+
+# VSA is heavy in recursion
 sys.setrecursionlimit(15000)
+
 
 class AbsStackElem(object):
     '''
@@ -28,14 +25,16 @@ class AbsStackElem(object):
         Init   --> [ up to 10 vals ]   --  TOP
 
         If a value is not known, it is None.
-        Note that we make the difference between the list beeing TOP, and one of the value inside
-        the list beeing TOP. The idea is that even if one of the value is not known,
-        we can list keep track of the known values.
+        Note that we make the difference between the list beeing TOP, and one
+        of the value inside the list beeing TOP. The idea is that even if one
+        of the value is not known, we can list keep track of the known values.
 
-        Thus our analysis is an under-approximation of an over-approximation and is not sound.
+        Thus our analysis is an under-approximation of an over-approximation
+        and is not sound.
     '''
 
-    MAXVALS = 10 # Maximum number of values inside the set. If > MAXVALS -> TOP
+    # Maximum number of values inside the set. If > MAXVALS -> TOP
+    MAXVALS = 10
 
     def __init__(self):
         self._vals = []
@@ -45,16 +44,20 @@ class AbsStackElem(object):
             Append value to the element
 
         Args:
-            nbr (int or long or binaryninja.function.InstructionTextToken or None)
+            nbr (int, long, binaryninja.function.InstructionTextToken, None)
         '''
-        if not nbr:
+        if nbr is None:
             self._vals.append(None)
         elif isinstance(nbr, (int, long)):
             self._vals.append(nbr)
         elif isinstance(nbr, InstructionTextToken):
             self._vals.append(nbr.value)
         else:
-            raise Exception('Wrong type in AbsStackElem.append %s %s'%(str(nbr), type(nbr)))
+            raise Exception(
+                'Wrong type in AbsStackElem.append {!s} {!s}'.format(
+                    nbr, type(nbr)
+                )
+            )
 
     def get_vals(self):
         '''
@@ -122,22 +125,28 @@ class AbsStackElem(object):
     def equals(self, elems):
         '''
             Return True if equal
+
         Args:
             elem (AbsStackElem)
         Returns:
             bool: True if the two absStackElem are equals. If both are TOP returns True
         '''
         v1 = self.get_vals()
+
         v2 = elems.get_vals()
+
         if not v1 or not v2:
             if not v1 and not v2:
                 return True
             return False
+
         if len(v1) != len(v2):
             return False
+
         for v in v1:
-            if not v in v2:
+            if v not in v2:
                 return False
+
         return True
 
     def get_copy(self):
@@ -157,6 +166,7 @@ class AbsStackElem(object):
             str
         '''
         return str(self._vals)
+
 
 class Stack(object):
     '''
@@ -187,6 +197,7 @@ class Stack(object):
             st = AbsStackElem()
             st.append(elem)
             elem = st
+
         self._elems.append(elem)
 
     def pop(self):
@@ -197,6 +208,7 @@ class Stack(object):
         '''
         if not self._elems:
             self.push(None)
+
         return self._elems.pop()
 
     def swap(self, n):
@@ -210,6 +222,7 @@ class Stack(object):
             top = self.top()
             self._elems[-1] = elem
             self._elems[-1-n] = top
+
         # if we swap more than the size of the stack,
         # we can assume that elemements are missing in the stack
         else:
@@ -572,11 +585,16 @@ class StackValueAnalysis(object):
 
     def end_bb(self, bb):
         addr = bb.start
+
         size = 0
+
         ins = None
+
         for (ins, size) in bb.__iter__():
             addr += size
+
         addr -= size
+
         return (addr, ins)
 
     def _transfer_func_bb(self, bb, init=False):
@@ -587,10 +605,11 @@ class StackValueAnalysis(object):
         (end, end_ins) = self.end_bb(bb)
 
         # bound the number of times we analyze a BB
-        if not addr in self.bb_counter:
+        if addr not in self.bb_counter:
             self.bb_counter[addr] = 1
         else:
             self.bb_counter[addr] += 1
+
             if self.bb_counter[addr] > self.MAXEXPLORATION:
                 return
 
@@ -603,28 +622,40 @@ class StackValueAnalysis(object):
         # Merge all the stack fathers
         # We merge only father that were already analyzed
         fathers = bb.incoming_edges
-        fathers = [x.source  for x in fathers]
+
+        fathers = [x.source for x in fathers]
+
         if init and self.initStack:
             stack = self.initStack
         else:
             stack = Stack()
+
         if len(fathers) > 1 and not init:
             i = 0
+
             d_start = None
+
             for i in xrange(0, len(fathers)):
-                if (fathers[i].end -1) in self.stacksOut:
+                if (fathers[i].end - 1) in self.stacksOut:
                     d_start = fathers[i]
+
             if not d_start:
                 return
-            if (d_start.end -1) in self.stacksOut:
-                stack.copy_stack(self.stacksOut[d_start.end -1])
+
+            if (d_start.end - 1) in self.stacksOut:
+                stack.copy_stack(self.stacksOut[d_start.end - 1])
+
                 fathers = fathers[:i] + fathers[i+1:]
+
                 for d in fathers:
-                    if (d.end -1) in self.stacksOut:
-                        stack2 = self.stacksOut[d.end -1]
+                    if (d.end - 1) in self.stacksOut:
+                        stack2 = self.stacksOut[d.end - 1]
+
                         stack = stack.merge(stack2)
+
         elif len(fathers) == 1 and not init:
             father = fathers[0]
+
             if (father.end - 1) in self.stacksOut:
                 stack.copy_stack(self.stacksOut[father.end - 1])
             else:
@@ -635,27 +666,38 @@ class StackValueAnalysis(object):
 
         # check if the last instruction is a JUMP
         op = str(end_ins[0]).replace(' ', '')
+
         if op == 'JUMP':
             src = end
+
             dst = self.stacksIn[end].top().get_vals()
+
             if dst:
                 dst = [x for x in dst if x and self.is_jumpdst(x)]
+
                 self.add_branches(src, dst)
+
         elif op == 'JUMPI':
             src = end
+
             dst = self.stacksIn[end].top().get_vals()
+
             if dst:
                 dst = [x for x in dst if x and self.is_jumpdst(x)]
+
                 self.add_branches(src, dst)
 
         # check for convergence
         converged = False
+
         if prev_stack:
             if prev_stack.equals(self.stacksOut[end]):
                 converged = True
+
         if not converged:
             for son in bb.outgoing_edges:
                 son = son.target
+
                 self._transfer_func_bb(son)
 
     def add_branches(self, src, dst):
@@ -669,10 +711,12 @@ class StackValueAnalysis(object):
             self.all_discovered_targets[src] = set()
 
         for d in dst:
-            if not d in self.all_discovered_targets[src]:
+            if d not in self.all_discovered_targets[src]:
                 if src not in self.last_discovered_targets:
                     self.last_discovered_targets[src] = set()
+
                 self.last_discovered_targets[src].add(d)
+
                 self.all_discovered_targets[src].add(d)
 
     def _update_func(self):
@@ -693,35 +737,31 @@ class StackValueAnalysis(object):
 
             self.func.set_user_indirect_branches(src, [(self.func.arch, x) for x in branches])
 
-    def explore_new(self):
-        '''
-            Re-launch the analysis on new targets found
-        '''
+    def explore(self):
+        """
+            Launch the analysis
+        """
+        to_explore = self.func.session_data.get('to_explore')
+        init = False
+
+        if to_explore is None:
+            to_explore = {self.func.start}
+            init = True
+
+        for dst in to_explore:
+            self.bb_counter = {}
+            bb = self.func.get_basic_block_at(dst)
+            if bb:
+                self._transfer_func_bb(bb, init)
+
         self.counter = self.counter + 1
+
         # Bound the recursion
         if self.counter >= self.MAXITERATION:
             return
         if not self.last_discovered_targets:
             return
         self._update_func()
-
-        # only explore new targets discovered
-        to_explore = set().union(*self.last_discovered_targets.values())
-        self.last_discovered_targets = {}
-        for dst in to_explore:
-            self.bb_counter = {}
-            bb = self.func.get_basic_block_at(dst)
-            if bb:
-                self._transfer_func_bb(bb)
-        self.explore_new()
-
-    def explore(self):
-        """
-            Launch the analysis
-        """
-        self.bb_counter = {}
-        self._transfer_func_bb(self.func.get_basic_block_at(self.func.start), True)
-        self.explore_new()
 
         # Binja does not allow to save any type; None is not accepted
         # For each stack, the first element is a boolean
@@ -737,28 +777,16 @@ class StackValueAnalysis(object):
         #     elems = v.get_elems()
         #     elems = [filter_vals(x.get_vals()) for x in elems]
         #     stacksOut[k] = elems
-        
+
         # # The stack value are saved at key func_name.out
         # self.view.store_metadata(self.func.name+".out", stacksOut)
         # self.view.modified = True
 
 
-class DynamicJumpTaskThread(BackgroundTaskThread):
-    def __init__(self, view, function):
-        self.view = view
-        self.function = function
-        BackgroundTaskThread.__init__(self, "Dynamic Jump Analysis", True)
-
-    def run(self):
-        function_dynamic_jump_start(self.view, self.function)
-
-
-def dynamic_jump_analysis(view, func):
-    DynamicJumpTaskThread(view, func).start()
-
-
 def function_dynamic_jump_start(view, func):
-    print "JMP recovery on "+func.name
-    sv = StackValueAnalysis(view, func, 100, 10)
+    sv = func.session_data.get('vsa_sv')
+
+    if sv is None:
+        sv = StackValueAnalysis(view, func, 100, 10)
+
     sv.explore()
-    print "Complete"
