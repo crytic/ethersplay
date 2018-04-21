@@ -763,6 +763,12 @@ class StackValueAnalysis(object):
             return
         self._update_func()
 
+        to_explore = set().union(*self.last_discovered_targets.values())
+        self.last_discovered_targets = {}
+
+        self.func.session_data['to_explore'] = to_explore
+
+
         # Binja does not allow to save any type; None is not accepted
         # For each stack, the first element is a boolean
         # If true, the following value are correct
@@ -788,5 +794,6 @@ def function_dynamic_jump_start(view, func):
 
     if sv is None:
         sv = StackValueAnalysis(view, func, 100, 10)
+        func.session_data['vsa_sv'] = sv
 
     sv.explore()
