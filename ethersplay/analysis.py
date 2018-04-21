@@ -5,7 +5,7 @@ from binaryninja import (BackgroundTaskThread, BranchType, IntegerDisplayType,
 from .common import EVM_HEADER
 from .evmvisitor import EVMVisitor
 from .known_hashes import knownHashes
-from .stack_value_analysis import dynamic_jump_analysis
+from .stack_value_analysis import function_dynamic_jump_start
 
 
 class QueueAnalysisCompletionTask(BackgroundTaskThread):
@@ -23,7 +23,6 @@ class QueueAnalysisCompletionTask(BackgroundTaskThread):
 
 
 def analyze_invalid_jumps(completion_event):
-    print "analyze_invalid_jumps"
     view = completion_event.view
 
     dispatcher = view.get_function_at(0)
@@ -110,7 +109,6 @@ def get_stack_def_for_offset(il, stack_offset):
 
 
 def analyze_jumps(completion_event):
-    print "analyze_jumps"
     view = completion_event.view
 
     view.define_auto_symbol(
@@ -232,4 +230,4 @@ def analyze_jumps(completion_event):
 
 class DynamicJumpCallback(BinaryDataNotification):
     def function_updated(self, view, func):
-        dynamic_jump_analysis(view, func)
+        function_dynamic_jump_start(view, func)
