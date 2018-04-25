@@ -1,5 +1,5 @@
 # ethersplay
-EVM dissassembler and related analysis tools.
+EVM disassembler and related analysis tools.
 
 ![Example](/images/example.png)
 
