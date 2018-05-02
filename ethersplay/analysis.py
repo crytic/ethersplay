@@ -29,14 +29,20 @@ def analyze_invalid_jumps(completion_event):
 
     invalid_jumps = []
 
-    # walk the binary and find any jumps that don't jump to
-    # a JUMPDEST.
+    # walk the binary and find invalid jumps
     for bb in dispatcher.basic_blocks:
         for edge in bb.outgoing_edges:
             if edge.type == BranchType.IndirectBranch:
+
+                # Does the jump not jump to a jumpdest?
                 if (not view.get_disassembly(
                             edge.target.start
                         ).startswith('JUMPDEST')):
+                    invalid_jumps.append((bb, edge))
+
+                # Does the jump jump to an immediate pushed on the stack?
+                elif (dispatcher.get_basic_block_at(edge.target.start).start !=
+                      edge.target.start):
                     invalid_jumps.append((bb, edge))
 
     if not invalid_jumps:
