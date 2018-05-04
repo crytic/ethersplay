@@ -7,7 +7,7 @@ import itertools
 import sys
 
 import patches  # noqa: F401
-from binaryninja import BackgroundTaskThread, InstructionTextToken
+from binaryninja import InstructionTextToken
 
 # VSA is heavy in recursion
 sys.setrecursionlimit(15000)
@@ -82,8 +82,8 @@ class AbsStackElem(object):
         Args:
             elem (AbsStackElem)
         Returns:
-            AbsStackElem: New object containing the result of the AND between the values
-                          If one of the absStackElem is TOP, returns TOP
+            AbsStackElem: New object containing the result of the AND between
+            the values. If one of the absStackElem is TOP, returns TOP
         '''
         newElem = AbsStackElem()
         v1 = self.get_vals()
@@ -129,7 +129,8 @@ class AbsStackElem(object):
         Args:
             elem (AbsStackElem)
         Returns:
-            bool: True if the two absStackElem are equals. If both are TOP returns True
+            bool: True if the two absStackElem are equals. If both are TOP
+            returns True
         '''
         v1 = self.get_vals()
 
@@ -171,7 +172,8 @@ class AbsStackElem(object):
 class Stack(object):
     '''
         Stack representation
-        The stack is updated throyugh the push/pop/dup operation, and returns itself
+        The stack is updated throyugh the push/pop/dup operation, and returns
+        itself
         We keep the same stack for one basic block, to reduce the memory usage
     '''
 
@@ -189,9 +191,11 @@ class Stack(object):
 
     def push(self, elem):
         '''
-            Push an elem. If the elem is not an AbsStackElem, create a new AbsStackElem
+            Push an elem. If the elem is not an AbsStackElem, create a new
+            AbsStackElem
         Args:
-            elem (AbsStackElem, or str or None): If str, it should be the hexadecimal repr
+            elem (AbsStackElem, or str or None): If str, it should be the
+            hexadecimal repr
         '''
         if not isinstance(elem, AbsStackElem):
             st = AbsStackElem()
@@ -315,12 +319,13 @@ class Stack(object):
         '''
         return str([str(x) for x in self._elems[-5::]])
 
+
 class StackValueAnalysis(object):
     '''
         Stack value analysis.
-        After each convergence, we add the new branches, update the binja view and
-        re-analyze the function. The exploration is bounded in case the analysis is lost.
-
+        After each convergence, we add the new branches, update the binja view
+        and re-analyze the function. The exploration is bounded in case the
+        analysis is lost.
     '''
 
     # TODO: this could come from EVMAsm
@@ -468,9 +473,13 @@ class StackValueAnalysis(object):
         'SELFDESTRUCT': (1, 0)
     }
 
-
-
-    def __init__(self, view, func, maxiteration=100, maxexploration=10, print_values=False, initStack=None):
+    def __init__(self,
+                 view,
+                 func,
+                 maxiteration=100,
+                 maxexploration=10,
+                 print_values=False,
+                 initStack=None):
         '''
         Args:
             view (binaryninja.binaryview.BinaryView)
@@ -478,21 +487,30 @@ class StackValueAnalysis(object):
             maxiteration (int): number of time re-analyze the function
             maxexploration (int): number of time re-explore a bb
         '''
-        # last targets discovered. We keep track of these branches to only re-launch
-        # the analysis on new paths found
+        # last targets discovered. We keep track of these branches to only
+        # re-launch the analysis on new paths found
         self.last_discovered_targets = {}
+
         # all the targets discovered
         self.all_discovered_targets = {}
         self.func = func
         self.view = view
         self.stacksIn = {}
         self.stacksOut = {}
-        self.bb_counter = {} # bb counter, to bound the bb exploration
-        self.counter = 0 # number of time the function was analysis, to bound the analysis recursion
+
+        # bb counter, to bound the bb exploration
+        self.bb_counter = {}
+
+        # number of time the function was analysis, to bound the analysis
+        # recursion
+        self.counter = 0
+
         # limit the number of time we re-analyze a function
         self.MAXITERATION = maxiteration
+
         # limit the number of time we explore a basic block (unrool)
         self.MAXEXPLORATION = maxexploration
+
         self.print_values = print_values
         self.initStack = initStack
 
@@ -548,12 +566,14 @@ class StackValueAnalysis(object):
 
     def _explore_bb(self, bb, stack):
         '''
-            Update the stack of a basic block. Return the last jump/jumpi target
+            Update the stack of a basic block. Return the last jump/jumpi
+            target
 
             The last jump value is returned, as the JUMP/JUMPI instruction will
             pop the value before returning the function
 
-            self.stacksOut will contain the stack of last instruction of the basic block.
+            self.stacksOut will contain the stack of last instruction of the
+            basic block.
         Args:
             bb
             stack (Stack)
@@ -735,7 +755,9 @@ class StackValueAnalysis(object):
             if existing_branches.issuperset(branches):
                 continue
 
-            self.func.set_user_indirect_branches(src, [(self.func.arch, x) for x in branches])
+            self.func.set_user_indirect_branches(
+                src, [(self.func.arch, x) for x in branches]
+            )
 
     def explore(self):
         """
@@ -768,28 +790,28 @@ class StackValueAnalysis(object):
 
         self.func.session_data['to_explore'] = to_explore
 
-
         # Binja does not allow to save any type; None is not accepted
         # For each stack, the first element is a boolean
         # If true, the following value are correct
         # If false, it means that it was a None
-        # def filter_vals(vals):
-        #     if None in vals:
-        #         return [False, 0]
-        #     return [True] + [float(x) for x in vals]
+        def filter_vals(vals):
+            if None in vals:
+                return [False, 0]
+            return [True] + [float(x) for x in vals]
 
-        # stacksOut = {}
-        # for (k,v) in self.stacksOut.iteritems():
-        #     elems = v.get_elems()
-        #     elems = [filter_vals(x.get_vals()) for x in elems]
-        #     stacksOut[k] = elems
+        stacksOut = {}
+        for k, v in self.stacksOut.iteritems():
+            elems = v.get_elems()
+            elems = [filter_vals(x.get_vals()) for x in elems]
+            stacksOut[k] = elems
 
-        # # The stack value are saved at key func_name.out
-        # self.view.store_metadata(self.func.name+".out", stacksOut)
-        # self.view.modified = True
+        # The stack value are saved at key func_name.out
+        self.view.store_metadata(hex(self.func.start)+".out", stacksOut)
+        self.view.modified = True
 
 
 def function_dynamic_jump_start(view, func):
+    # This is the BinaryDataNotification callback entry.
     sv = func.session_data.get('vsa_sv')
 
     if sv is None:
@@ -797,3 +819,14 @@ def function_dynamic_jump_start(view, func):
         func.session_data['vsa_sv'] = sv
 
     sv.explore()
+
+
+def function_stack_value_analysis_start(view, func):
+    # This is the plugin callback entry. It forces the
+    # stack value analysis to be re-run.
+    sv = func.session_data.get('vsa_sv')
+
+    if sv is not None:
+        func.session_data['vsa_sv'] = None
+
+    function_dynamic_jump_start(view, func)
