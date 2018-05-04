@@ -7,7 +7,8 @@ from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
                          LowLevelILOperation, RegisterInfo, SegmentFlag,
                          Symbol, SymbolType)
 
-from .analysis import DynamicJumpCallback, analyze_invalid_jumps
+from .analysis import (DispatcherCallback, DynamicJumpCallback,
+                       InvalidJumpCallback)
 from .common import ADDR_SIZE, EVM_HEADER
 from .evmasm import EVMAsm
 
@@ -374,7 +375,12 @@ class EVMView(BinaryView):
             )
         )
 
-        self.add_analysis_completion_event(analyze_invalid_jumps)
+        invalidJumpCallbackNotification = InvalidJumpCallback()
+        self.register_notification(invalidJumpCallbackNotification)
+
+        dispatcherCallbackNotification = DispatcherCallback()
+        self.register_notification(dispatcherCallbackNotification)
+
         dynamicJumpCallbackNotification = DynamicJumpCallback()
         self.register_notification(dynamicJumpCallbackNotification)
         return True
