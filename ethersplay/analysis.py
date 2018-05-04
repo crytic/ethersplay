@@ -117,14 +117,6 @@ def get_stack_def_for_offset(il, stack_offset):
 def analyze_jumps(completion_event):
     view = completion_event.view
 
-    view.define_auto_symbol(
-        Symbol(
-            SymbolType.FunctionSymbol,
-            0,
-            '_dispatcher'
-        )
-    )
-
     dispatch_functions = []
 
     dispatcher = view.get_function_at(0).medium_level_il
