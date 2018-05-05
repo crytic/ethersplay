@@ -66,6 +66,9 @@ These analyses are launched automatically once a bytecode is loaded:
 
 ## Plugins
 
+### EVM Print Stack
+Add the possible stack values as comments to the code, if it has been calculated by the value-set analysis.
+
 ### EVM Source Code
 
 Match the solidity source code to the EVM bytecode.
@@ -79,5 +82,5 @@ The source code file has to be in the same directory than the `*.asm.json` file.
 Color the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
 
 ## Known issues
-- Some branches are still undiscovered, but can be manually added with [Function.set_user_indirect_branches](https://api.binary.ninja/binaryninja.function-module.html#binaryninja.function.Function.set_user_indirect_branches)
+- The `EVM Stack Value Analysis` plugin command does not work on EVM code that is not in an `EVMView` `BinaryView`.
 - `EVM Source Code` was tested with solc 0.4.16. It is not compatible with other versions.
