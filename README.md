@@ -82,9 +82,6 @@ The source code file has to be in the same directory than the `*.asm.json` file.
 Color the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
 
 ## Known issues
-<<<<<<< HEAD
 - The `EVM Stack Value Analysis` plugin command does not work on EVM code that is not in an `EVMView` `BinaryView`.
-=======
 - Analysis hangs on malformed binary files.
->>>>>>> Update convert_bytecode.py and README.md
 - `EVM Source Code` was tested with solc 0.4.16. It is not compatible with other versions.
