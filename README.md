@@ -52,9 +52,9 @@ Binary of the runtime part:
 60606040523615603d576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063b0f2b72a146041575b5b5b005b3415604b57600080fd5b605f60048080359060200190919050506061565b005b806000819055505b505600a165627a7a72305820c177a64bf54a26574918ddc2201f7ab2dd8619d6c3ee87ce9aaa1eb0e0b1d4650029
 ```
 
-Copy the ascii hex string, and then create a new file in Binary Ninja. Type into the file `EVM`, then right-click and select `Paste From -> Raw Hex`. The output should look identical to the earlier example image. Save this file as `test.evm` and close it.
+Copy the ascii hex string, and then create a new file in Binary Ninja. Type into the file `EVM`, then right-click and select `Paste From -> Raw Hex`. The output should look identical to the earlier example image. Save this file as `test.evm` and close it. Alternatively, paste the ascii hex string into a new text file, and run the `utils/convert_bytecode.py` on that file.
 
-`test.evm` can now be loaded into Binary Ninja
+`test.evm` can now be loaded into Binary Ninja.
 
 ## Automatic analyses
 
@@ -82,5 +82,9 @@ The source code file has to be in the same directory than the `*.asm.json` file.
 Color the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
 
 ## Known issues
+<<<<<<< HEAD
 - The `EVM Stack Value Analysis` plugin command does not work on EVM code that is not in an `EVMView` `BinaryView`.
+=======
+- Analysis hangs on malformed binary files.
+>>>>>>> Update convert_bytecode.py and README.md
 - `EVM Source Code` was tested with solc 0.4.16. It is not compatible with other versions.

@@ -1,6 +1,5 @@
 #!/usr/bin/python
 import sys
-#import re
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
@@ -17,6 +16,6 @@ if __name__ == '__main__':
     code = code.replace('\n', '').decode('hex')
 
     f = open(filename_output, 'wb')
+    f.write('EVM')
     f.write(code)
     f.close()
-
