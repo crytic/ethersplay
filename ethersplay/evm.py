@@ -4,11 +4,13 @@
 from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
                          Endianness, InstructionInfo, InstructionTextToken,
                          InstructionTextTokenType, LowLevelILLabel,
-                         LowLevelILOperation, RegisterInfo, SegmentFlag)
+                         LowLevelILOperation, RegisterInfo, SegmentFlag,
+                         Symbol, SymbolType)
 
-from .common import EVM_HEADER, ADDR_SIZE
+from .analysis import (DispatcherCallback, DynamicJumpCallback,
+                       InvalidJumpCallback)
+from .common import ADDR_SIZE, EVM_HEADER
 from .evmasm import EVMAsm
-from .analysis import analyze_invalid_jumps
 
 
 def jumpi(il, addr, imm):
@@ -365,7 +367,22 @@ class EVMView(BinaryView):
                 SegmentFlag.SegmentExecutable)
         )
 
-        self.add_analysis_completion_event(analyze_invalid_jumps)
+        self.define_auto_symbol(
+            Symbol(
+                SymbolType.FunctionSymbol,
+                0,
+                '_dispatcher'
+            )
+        )
+
+        invalidJumpCallbackNotification = InvalidJumpCallback()
+        self.register_notification(invalidJumpCallbackNotification)
+
+        dispatcherCallbackNotification = DispatcherCallback()
+        self.register_notification(dispatcherCallbackNotification)
+
+        dynamicJumpCallbackNotification = DynamicJumpCallback()
+        self.register_notification(dynamicJumpCallbackNotification)
         return True
 
     @staticmethod

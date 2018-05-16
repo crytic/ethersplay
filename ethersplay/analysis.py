@@ -1,57 +1,41 @@
-from binaryninja import (BackgroundTaskThread, BranchType, IntegerDisplayType,
-                         MediumLevelILOperation, SegmentFlag, SSAVariable,
-                         Symbol, SymbolType)
+from binaryninja import (BinaryDataNotification, BranchType,
+                         IntegerDisplayType, MediumLevelILOperation,
+                         SegmentFlag, SSAVariable, Symbol, SymbolType)
 
 from .common import EVM_HEADER
 from .evmvisitor import EVMVisitor
 from .known_hashes import knownHashes
+from .stack_value_analysis import function_dynamic_jump_start
 
 
-class QueueAnalysisCompletionTask(BackgroundTaskThread):
-    def __init__(
-            self, view, callback, initial_progress_text="", can_cancel=False
-            ):
-        self.callback = callback
-        self.view = view
-        super(QueueAnalysisCompletionTask, self).__init__(
-            initial_progress_text, can_cancel
-        )
-
-    def run(self):
-        self.view.add_analysis_completion_event(self.callback)
-
-
-def analyze_invalid_jumps(completion_event):
-    print "analyze_invalid_jumps"
-    view = completion_event.view
-
-    dispatcher = view.get_function_at(0)
-
+def analyze_invalid_jumps(view, dispatcher):
     invalid_jumps = []
 
-    # walk the binary and find any jumps that don't jump to
-    # a JUMPDEST.
+    # walk the binary and find invalid jumps
     for bb in dispatcher.basic_blocks:
         for edge in bb.outgoing_edges:
             if edge.type == BranchType.IndirectBranch:
-                if (not view.get_disassembly(
-                            edge.target.start
-                        ).startswith('JUMPDEST')):
+
+                # Does the jump not jump to a jumpdest?
+                if (view.get_disassembly(edge.target.start) not in
+                        ('JUMPDEST', 'INVALID')):
+                    invalid_jumps.append((bb, edge))
+
+                # Does the jump jump to an immediate pushed on the stack?
+                elif (dispatcher.get_basic_block_at(edge.target.start).start !=
+                      edge.target.start):
                     invalid_jumps.append((bb, edge))
 
     if not invalid_jumps:
-        analyze_jumps(completion_event)
         return
 
+    # TODO: do this once and set it as BinaryView metadata so we don't
+    # append a bunch of 0xfe bytes to the end of the file.
     invalid_block, error = view.arch.assemble('INVALID')
     if invalid_block is None:
-        analyze_jumps(completion_event)
         return
 
     invalid_address = len(view.parent_view) - len(EVM_HEADER)
-
-    qact = QueueAnalysisCompletionTask(view, analyze_jumps)
-    qact.start()
 
     view.parent_view.write(len(view.parent_view), invalid_block)
     view.add_auto_segment(
@@ -108,29 +92,28 @@ def get_stack_def_for_offset(il, stack_offset):
     return hash_il.src
 
 
-def analyze_jumps(completion_event):
-    print "analyze_jumps"
-    view = completion_event.view
-
-    view.define_auto_symbol(
-        Symbol(
-            SymbolType.FunctionSymbol,
-            0,
-            '_dispatcher'
-        )
-    )
-
+def analyze_jumps(view, func):
     dispatch_functions = []
 
-    dispatcher = view.get_function_at(0).medium_level_il
+    # We'll reference these when determining if we need to create a function
+    mlil_jumps = (
+        MediumLevelILOperation.MLIL_JUMP_TO, MediumLevelILOperation.MLIL_JUMP
+    )
+
+    dispatcher = func.medium_level_il
 
     il_bb_lookup = build_bb_lookup_table(dispatcher)
 
     # Iterate over all of the MLIL instructions and find all the JUMPI
     # instructions.
     current_bb = dispatcher.basic_blocks[0]
+    il = None
     while current_bb:
+        if il is not None:
+            current_bb = il_bb_lookup[il.false]
+
         il = current_bb[-1]
+
         if il.operation == MediumLevelILOperation.MLIL_IF:
             # add the fallback function
             if current_bb == dispatcher.basic_blocks[0]:
@@ -144,13 +127,11 @@ def analyze_jumps(completion_event):
             visit_result = visitor.visit(il)
 
             if visit_result is None:
-                current_bb = il_bb_lookup[il.false]
                 continue
 
             value, hash_constant = visit_result
 
             if value < len(view):
-                current_bb = il_bb_lookup[il.false]
                 continue
 
             # Locate the definition of the hash value so we can set
@@ -180,6 +161,13 @@ def analyze_jumps(completion_event):
             else:
                 method_name = hash_value
 
+            # Skip this one if there's already a symbol for the hash.
+            # This will keep us from updating the function with the
+            # Function.set_int_display_type later on, which will stop
+            # us from triggering our own callback repeatedly
+            if view.get_symbol_at(value) is not None:
+                continue
+
             # We use SymbolType.ImportedFunctionSymbol because it will
             # change the font color to orange. Gives it a little "pop"!
             #
@@ -207,15 +195,13 @@ def analyze_jumps(completion_event):
             target = dispatcher[il.true]
 
             # Make a function at the instruction following the
-            # JUMPTARGET instruction. This makes the control flow graph
+            # JUMPDEST instruction. This makes the control flow graph
             # "fall through" to the function, pruning those basic blocks
             # from the dispatcher function.
-            if target.operation == MediumLevelILOperation.MLIL_JUMP_TO:
+            if target.operation in mlil_jumps:
                 dispatch_functions.append(
                     (target.dest.constant + 1, method_name)
                 )
-
-            current_bb = il_bb_lookup[il.false]
 
         else:
             current_bb = None
@@ -227,3 +213,22 @@ def analyze_jumps(completion_event):
         view.create_user_function(addr)
         dispatch_function = view.get_function_at(addr)
         dispatch_function.name = method_name
+
+
+class InvalidJumpCallback(BinaryDataNotification):
+    def function_updated(self, view, func):
+        analyze_invalid_jumps(view, func)
+
+
+class DispatcherCallback(BinaryDataNotification):
+    def function_updated(self, view, func):
+        # Only execute if this is the dispatcher.
+        if func.start != 0:
+            return
+
+        analyze_jumps(view, func)
+
+
+class DynamicJumpCallback(BinaryDataNotification):
+    def function_updated(self, view, func):
+        function_dynamic_jump_start(view, func)
