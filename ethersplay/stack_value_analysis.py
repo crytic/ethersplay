@@ -795,6 +795,8 @@ class StackValueAnalysis(object):
         # If true, the following value are correct
         # If false, it means that it was a None
         def filter_vals(vals):
+            if vals is None:
+                return []
             if None in vals:
                 return [False, 0]
             return [True] + [float(x) for x in vals]
