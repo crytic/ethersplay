@@ -119,9 +119,11 @@ def analyze_jumps(view, func):
             if current_bb == dispatcher.basic_blocks[0]:
                 true = dispatcher[il.true]
                 if true.operation == MediumLevelILOperation.MLIL_JUMP_TO:
-                    dispatch_functions.append(
-                        (true.dest.constant+1, "_fallback")
-                    )
+                    # Avoid trying to create a fallback if there is an invalid jump
+                    if true.dest.constant+1 < len(func.view):
+                        dispatch_functions.append(
+                            (true.dest.constant+1, "_fallback")
+                        )
 
             visitor = EVMVisitor(lookup=il_bb_lookup)
             visit_result = visitor.visit(il)
