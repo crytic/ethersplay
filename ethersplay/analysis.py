@@ -97,7 +97,8 @@ def analyze_jumps(view, func):
 
     # We'll reference these when determining if we need to create a function
     mlil_jumps = (
-        MediumLevelILOperation.MLIL_JUMP_TO, MediumLevelILOperation.MLIL_JUMP
+        MediumLevelILOperation.MLIL_JUMP_TO, MediumLevelILOperation.MLIL_JUMP,
+        MediumLevelILOperation.MLIL_TAILCALL_UNTYPED
     )
 
     dispatcher = func.medium_level_il
