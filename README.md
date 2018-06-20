@@ -17,6 +17,12 @@ cd ~/Library/Application\ Support/Binary\ Ninja/plugins
 ln -s <your_download_location>/ethersplay/ethersplay .
 ```
 
+Ubuntu:
+```
+cd ~/.binaryninja/plugins
+ln -s <your_download_location>/ethersplay/ethersplay .
+```
+
 ## How to Use
 
 Ethersplay takes as input the evm bytecode in raw binary format. Prepend the file with the header `EVM`, as shown below:
