@@ -543,10 +543,10 @@ class StackValueAnalysis(object):
         if op.startswith('PUSH'):
             stack.push(ins[1])
         elif op.startswith('SWAP'):
-            nth_elem = int(op[4])
+            nth_elem = int(op[4:])
             stack.swap(nth_elem)
         elif op.startswith('DUP'):
-            nth_elem = int(op[3])
+            nth_elem = int(op[3:])
             stack.dup(nth_elem)
         elif op == 'AND':
             v1 = stack.pop()
