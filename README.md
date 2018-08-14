@@ -1,5 +1,5 @@
 # ethersplay
-EVM disassembler and related analysis tools.
+Binary Ninja plugin which enables an EVM disassembler and related analysis tools.
 
 ![Example](/images/example.png)
 
