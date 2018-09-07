@@ -414,6 +414,12 @@ class EVMView(BinaryView):
         dynamicJumpCallbackNotification = DynamicJumpCallback()
         self.register_notification(dynamicJumpCallbackNotification)
 
+        # disable linear sweep
+        self.store_metadata(
+            "ephemeral",
+            {"binaryninja.analysis.autorunLinearSweep": False}
+        )
+
         return True
 
     @staticmethod
