@@ -12,6 +12,8 @@ from .analysis import (DispatcherCallback, DynamicJumpCallback,
 from .common import ADDR_SIZE, EVM_HEADER
 from .evmasm import EVMAsm
 
+from interval import Interval, IntervalSet
+
 
 def jumpi(il, addr, imm):
     dest = il.pop(ADDR_SIZE)
@@ -354,18 +356,46 @@ class EVMView(BinaryView):
         BinaryView.__init__(self, parent_view=data, file_metadata=data.file)
         self.raw = data
 
+    def find_swarm_hashes(self, data):
+        rv = []
+        offset = data.find('\xa1ebzzr0')
+        while offset != -1:
+            print "Adding r-- segment at: {:#x}".format(offset)
+            rv.append((offset, 43))
+            offset = data[offset+1:].find('\xa1ebzzr0')
+
+        return rv
+
+
     def init(self):
         self.arch = Architecture['EVM']
         self.platform = Architecture['EVM'].standalone_platform
         self.add_entry_point(0)
 
         file_size = len(self.raw)
-        self.add_auto_segment(
-            0, file_size - len(EVM_HEADER),
-            len(EVM_HEADER), file_size,
-            (SegmentFlag.SegmentReadable |
-                SegmentFlag.SegmentExecutable)
-        )
+
+        # Find swarm hashes and make them data
+        bytes = self.raw.read(0, file_size)
+
+        # code is everything that isn't a swarm hash
+        code = IntervalSet([Interval(0, file_size)])
+
+        swarm_hashes = self.find_swarm_hashes(bytes)
+        for start, sz in swarm_hashes:
+            self.add_auto_segment(start - len(EVM_HEADER), sz, start, sz, SegmentFlag.SegmentContainsData | SegmentFlag.SegmentDenyExecute | SegmentFlag.SegmentReadable | SegmentFlag.SegmentDenyWrite)
+
+            code -= IntervalSet([Interval(start, start + sz)])
+
+        print "Code Segments: {}".format(code)
+
+
+        for interval in code:
+            self.add_auto_segment(
+                interval.lower_bound, interval.upper_bound - len(EVM_HEADER),
+                len(EVM_HEADER), interval.upper_bound,
+                (SegmentFlag.SegmentReadable |
+                    SegmentFlag.SegmentExecutable)
+            )
 
         self.define_auto_symbol(
             Symbol(
@@ -383,6 +413,7 @@ class EVMView(BinaryView):
 
         dynamicJumpCallbackNotification = DynamicJumpCallback()
         self.register_notification(dynamicJumpCallbackNotification)
+
         return True
 
     @staticmethod

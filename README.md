@@ -10,6 +10,11 @@ Binary Ninja plugin which enables an EVM disassembler and related analysis tools
 - [Known issues](#known-issues)
 
 ## Installation
+Install the dependencies:
+```console
+$ pip install interval
+```
+
 Create a symbolic link to the Binary Ninja [plugin folder](https://github.com/Vector35/binaryninja-api/tree/dev/python/examples#loading-plugins).
 E.g., in macOS
 ```
