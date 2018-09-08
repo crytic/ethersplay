@@ -361,6 +361,8 @@ class EVMAsm(object):
         0x3a: ('GASPRICE', 0, 0, 1, 2, 'Get price of gas in current environment.'),
         0x3b: ('EXTCODESIZE', 0, 1, 1, 20, "Get size of an account's code."),
         0x3c: ('EXTCODECOPY', 0, 4, 0, 20, "Copy an account's code to memory."),
+        0x3d: ('RETURNDATASIZE', 0, 0, 1, 2, 'Get size of output data from the previous call from the current environment'),
+        0x3e: ('RETURNDATACOPY', 0, 3, 0, 3, 'Copy output data from the previous call to memory'),
         0x40: ('BLOCKHASH', 0, 1, 1, 20, 'Get the hash of one of the 256 most recent complete blocks.'),
         0x41: ('COINBASE', 0, 0, 1, 2, "Get the block's beneficiary address."),
         0x42: ('TIMESTAMP', 0, 0, 1, 2, "Get the block's timestamp."),

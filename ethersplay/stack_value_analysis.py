@@ -368,6 +368,8 @@ class StackValueAnalysis(object):
         'GASPRICE': (0, 1),
         'EXTCODESIZE': (1, 1),
         'EXTCODECOPY': (4, 0),
+        'RETURNDATASIZE': (0, 1),
+        'RETURNDATACOPY': (3, 0),
         'BLOCKHASH': (1, 1),
         'COINBASE': (0, 1),
         'TIMESTAMP': (0, 1),
