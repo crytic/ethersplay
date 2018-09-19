@@ -7,7 +7,8 @@ import itertools
 import sys
 
 import patches  # noqa: F401
-from binaryninja import InstructionTextToken
+from binaryninja import InstructionTextToken, log_debug, worker_enqueue
+import functools
 
 # VSA is heavy in recursion
 sys.setrecursionlimit(15000)
@@ -586,6 +587,17 @@ class StackValueAnalysis(object):
         addr = bb.start
         size = 0
 
+        visited_list = self.func.session_data.get('visited')
+        if visited_list is None:
+            visited_list = dict()
+            self.func.session_data['visited'] = visited_list
+        visit_count = visited_list.get(bb.start, 0) + 1
+        visited_list[bb.start] = visit_count
+
+        if visit_count > 10:
+            log_debug("Hit visit count for {:8x}. Skipping".format(bb.start))
+            return
+
         # XXX: BasicBlock.__iter__ is broken in stable.
         for (ins, size) in bb:
             if self.print_values:
@@ -729,6 +741,7 @@ class StackValueAnalysis(object):
             src (int)
             dst (list of int)
         '''
+
         if src not in self.all_discovered_targets:
             self.all_discovered_targets[src] = set()
 
@@ -745,26 +758,30 @@ class StackValueAnalysis(object):
         '''
             Update the function with new branches
         '''
+        log_debug("[SVA] update_func")
         for (src, dst) in self.all_discovered_targets.iteritems():
             existing_branches = {
                 x.dest_addr
                 for x in self.func.get_indirect_branches_at(src)
             }
-            branches = {x for x in dst}
+            branches = {x for x in dst if self.view.is_valid_offset(x)}
 
             # Don't add branches if nothing has changed. This will prevent the
             # analysis from looping indefinitely on the notification.
             if existing_branches.issuperset(branches):
                 continue
 
+            log_debug("[{:08x}]".format(src) + ' '.join(map(hex, branches | existing_branches)))
             self.func.set_user_indirect_branches(
-                src, [(self.func.arch, x) for x in branches]
+                src, [(self.func.arch, x) for x in (branches | existing_branches)
+                if self.view.is_valid_offset(x)]
             )
 
     def explore(self):
         """
             Launch the analysis
         """
+        log_debug("[SVA] explore {}".format(self.func.name))
         to_explore = self.func.session_data.get('to_explore')
         init = False
 
@@ -790,7 +807,8 @@ class StackValueAnalysis(object):
         to_explore = set().union(*self.last_discovered_targets.values())
         self.last_discovered_targets = {}
 
-        self.func.session_data['to_explore'] = to_explore
+        if self.func.session_data.get('to_explore') != to_explore:
+            self.func.session_data['to_explore'] = to_explore
 
         # Binja does not allow to save any type; None is not accepted
         # For each stack, the first element is a boolean
@@ -814,7 +832,7 @@ class StackValueAnalysis(object):
         self.view.modified = True
 
 
-def function_dynamic_jump_start(view, func):
+def stack_value_analysis(view, func):
     # This is the BinaryDataNotification callback entry.
     sv = func.session_data.get('vsa_sv')
 
@@ -822,10 +840,11 @@ def function_dynamic_jump_start(view, func):
         sv = StackValueAnalysis(view, func, 100, 10)
         func.session_data['vsa_sv'] = sv
 
+    func.session_data['visited'] = dict()
+
     sv.explore()
 
-
-def function_stack_value_analysis_start(view, func):
+def stack_value_analysis_plugin(view, func):
     # This is the plugin callback entry. It forces the
     # stack value analysis to be re-run.
     sv = func.session_data.get('vsa_sv')
@@ -833,4 +852,4 @@ def function_stack_value_analysis_start(view, func):
     if sv is not None:
         func.session_data['vsa_sv'] = None
 
-    function_dynamic_jump_start(view, func)
+    stack_value_analysis(view, func)

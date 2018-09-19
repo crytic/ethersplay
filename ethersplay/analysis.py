@@ -1,60 +1,15 @@
-from binaryninja import (BinaryDataNotification, BranchType,
+import functools
+
+from binaryninja import (LLIL_TEMP, BinaryDataNotification, BranchType,
                          IntegerDisplayType, MediumLevelILOperation,
-                         SegmentFlag, SSAVariable, Symbol, SymbolType)
+                         PluginCommand, RegisterValueType, SegmentFlag,
+                         SSAVariable, Symbol, SymbolType, VariableSourceType,
+                         log_debug, log_info, worker_enqueue)
 
 from .common import EVM_HEADER
 from .evmvisitor import EVMVisitor
 from .known_hashes import knownHashes
-from .stack_value_analysis import function_dynamic_jump_start
-
-
-def analyze_invalid_jumps(view, dispatcher):
-    invalid_jumps = []
-
-    # walk the binary and find invalid jumps
-    for bb in dispatcher.basic_blocks:
-        for edge in bb.outgoing_edges:
-            if edge.type == BranchType.IndirectBranch:
-
-                # Does the jump not jump to a jumpdest?
-                if (view.get_disassembly(edge.target.start) not in
-                        ('JUMPDEST', 'INVALID')):
-                    invalid_jumps.append((bb, edge))
-
-                # Does the jump jump to an immediate pushed on the stack?
-                elif (dispatcher.get_basic_block_at(edge.target.start).start !=
-                      edge.target.start):
-                    invalid_jumps.append((bb, edge))
-
-    if not invalid_jumps:
-        return
-
-    # TODO: do this once and set it as BinaryView metadata so we don't
-    # append a bunch of 0xfe bytes to the end of the file.
-    invalid_block, error = view.arch.assemble('INVALID')
-    if invalid_block is None:
-        return
-
-    invalid_address = len(view.parent_view) - len(EVM_HEADER)
-
-    view.parent_view.write(len(view.parent_view), invalid_block)
-    view.add_auto_segment(
-        0, len(view.parent_view) - len(EVM_HEADER),
-        len(EVM_HEADER), len(view.parent_view),
-        SegmentFlag.SegmentReadable | SegmentFlag.SegmentExecutable
-    )
-
-    for bb, edge in invalid_jumps:
-        asm = bb.disassembly_text[-2]
-
-        opcode = asm.tokens[0].text.strip()
-
-        if (opcode.startswith('PUSH')):
-            imm = invalid_address
-            patch, error = view.arch.assemble('{} {}'.format(opcode, imm))
-
-            if patch is not None:
-                view.write(asm.address, patch)
+from .stack_value_analysis import stack_value_analysis
 
 
 def build_bb_lookup_table(mlil_function):
@@ -95,11 +50,6 @@ def get_stack_def_for_offset(il, stack_offset):
 def analyze_jumps(view, func):
     dispatch_functions = []
 
-    # We'll reference these when determining if we need to create a function
-    mlil_jumps = (
-        MediumLevelILOperation.MLIL_JUMP_TO, MediumLevelILOperation.MLIL_JUMP
-    )
-
     dispatcher = func.medium_level_il
 
     il_bb_lookup = build_bb_lookup_table(dispatcher)
@@ -115,15 +65,22 @@ def analyze_jumps(view, func):
         il = current_bb[-1]
 
         if il.operation == MediumLevelILOperation.MLIL_IF:
+            # Let's determine if this target is both a constant
+            # and a valid jump destination. If it's not, we won't be
+            # adding it to anything.
+            branch_target = il.get_reg_value(LLIL_TEMP(1))
+            create_dispatch = (
+                branch_target is not None and
+                branch_target.type == RegisterValueType.ConstantValue and
+                branch_target.value + 1 < len(func.view) and
+                view.get_disassembly(branch_target.value) == 'JUMPDEST'
+            )
+
             # add the fallback function
-            if current_bb == dispatcher.basic_blocks[0]:
-                true = dispatcher[il.true]
-                if true.operation == MediumLevelILOperation.MLIL_JUMP_TO:
-                    # Avoid trying to create a fallback if there is an invalid jump
-                    if true.dest.constant+1 < len(func.view):
-                        dispatch_functions.append(
-                            (true.dest.constant+1, "_fallback")
-                        )
+            if current_bb == dispatcher.basic_blocks[0] and create_dispatch:
+                dispatch_functions.append(
+                    (branch_target.value + 1, "_fallback")
+                )
 
             visitor = EVMVisitor(lookup=il_bb_lookup)
             visit_result = visitor.visit(il)
@@ -193,16 +150,9 @@ def analyze_jumps(view, func):
                     IntegerDisplayType.PointerDisplayType
                 )
 
-            # The dispatched function is down the True branch.
-            target = dispatcher[il.true]
-
-            # Make a function at the instruction following the
-            # JUMPDEST instruction. This makes the control flow graph
-            # "fall through" to the function, pruning those basic blocks
-            # from the dispatcher function.
-            if target.operation in mlil_jumps:
+            if create_dispatch:
                 dispatch_functions.append(
-                    (target.dest.constant + 1, method_name)
+                    (branch_target.value + 1, method_name)
                 )
 
         else:
@@ -217,20 +167,50 @@ def analyze_jumps(view, func):
         dispatch_function.name = method_name
 
 
-class InvalidJumpCallback(BinaryDataNotification):
-    def function_updated(self, view, func):
-        analyze_invalid_jumps(view, func)
+def analyze_stack_values_callback(completion_event):
+    log_debug('analyze_stack_values_callback')
+    view = completion_event.view
+    function = view.get_function_at(0)
+
+    # Queue up the dispatcher analysis first
+    view.register_notification(DispatcherCallback())
+
+    # Queue up the rest of the stack value analysis
+    view.register_notification(DynamicJumpCallback())
+
+    # Add the analysis function to the queue of worker
+    # threads
+    analysis_worker = functools.partial(
+        stack_value_analysis, view, function
+    )
+
+    worker_enqueue(analysis_worker)
 
 
 class DispatcherCallback(BinaryDataNotification):
     def function_updated(self, view, func):
+        log_info("function_updated {:x}".format(func.start))
         # Only execute if this is the dispatcher.
         if func.start != 0:
+            # Unregister this notification, because we won't need to do it 
+            # automatically again.
+            unregister_callback = functools.partial(
+                view.unregister_notification, self
+            )
+            worker_enqueue(unregister_callback)
             return
 
-        analyze_jumps(view, func)
+        # analyze_jumps(view, func)
+        analysis_callback = functools.partial(analyze_jumps, view, func)
+        worker_enqueue(analysis_callback)
 
 
 class DynamicJumpCallback(BinaryDataNotification):
+    def function_update_requested(self, view, func):
+        log_info("function_update_requested {:x}".format(func.start))
     def function_updated(self, view, func):
-        function_dynamic_jump_start(view, func)
+        log_debug("DynamicJumpCallback start {:x}".format(func.start))
+        analysis_callback = functools.partial(
+            stack_value_analysis, view, func
+        )
+        worker_enqueue(analysis_callback)
