@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import functools
+
+from interval import Interval, IntervalSet
+from pyevmasm import assemble, disassemble_all, disassemble_one
+
 from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
                          Endianness, InstructionInfo, InstructionTextToken,
                          InstructionTextTokenType, LowLevelILLabel,
                          LowLevelILOperation, RegisterInfo, SegmentFlag,
-                         Symbol, SymbolType)
+                         Symbol, SymbolType, log_debug)
 
-from .analysis import (DispatcherCallback, DynamicJumpCallback,
-                       InvalidJumpCallback)
+from .analysis import analyze_stack_values_callback
 from .common import ADDR_SIZE, EVM_HEADER
-from .evmasm import EVMAsm
-
-from interval import Interval, IntervalSet
 
 
 def jumpi(il, addr, imm):
@@ -27,7 +28,9 @@ def jumpi(il, addr, imm):
             push.operation == LowLevelILOperation.LLIL_PUSH and
             push.src.operation == LowLevelILOperation.LLIL_CONST):
         dest = il.const(ADDR_SIZE, push.src.constant)
-        il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
+        il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(1), il.pop(ADDR_SIZE)))
+    else:
+        il.append(dest)
 
     t = LowLevelILLabel()
     f = il.get_label_for_address(Architecture['EVM'], addr+1)
@@ -40,13 +43,13 @@ def jumpi(il, addr, imm):
     # We need to use a temporary register here. The il.if_expr() helper
     # function makes a tree and evaluates the condition's il.pop()
     # first, but dest needs to be first.
-    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(addr), dest))
+    #il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(addr), dest))
 
     il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
     il.append(il.if_expr(il.reg(ADDR_SIZE, LLIL_TEMP(0)), t, f))
 
     il.mark_label(t)
-    il.append(il.jump(il.reg(ADDR_SIZE, LLIL_TEMP(addr))))
+    il.append(il.jump(il.unimplemented()))#il.reg(ADDR_SIZE, LLIL_TEMP(1))))
 
     if must_mark:
         il.mark_label(f)
@@ -273,7 +276,14 @@ class EVM(Architecture):
     stack_pointer = "sp"
 
     def get_instruction_info(self, data, addr):
-        instruction = EVMAsm.disassemble_one(data, addr)
+        try:
+            instruction = disassemble_one(data, addr)
+        except StopIteration:
+            log_debug('[{:08x}] Encountered a bad instruction (info)'.format(addr))
+            return None
+
+        if instruction is None:
+            return None
 
         result = InstructionInfo()
         result.length = instruction.size
@@ -289,7 +299,15 @@ class EVM(Architecture):
         return result
 
     def get_instruction_text(self, data, addr):
-        instruction = EVMAsm.disassemble_one(data, addr)
+        # log_debug('EVM.get_instruction_text(data, 0x{:x})'.format(addr))
+        try:
+            instruction = disassemble_one(data, addr)
+        except StopIteration:
+            log_debug('[{:8x}] Encountered a bad instruction (text)'.format(addr))
+            return None
+
+        if instruction is None:
+            return None
 
         tokens = []
         tokens.append(
@@ -315,7 +333,14 @@ class EVM(Architecture):
         return tokens, instruction.size
 
     def get_instruction_low_level_il(self, data, addr, il):
-        instruction = EVMAsm.disassemble_one(data, addr)
+        try:
+            instruction = disassemble_one(data, addr)
+        except StopIteration:
+            log_debug("[{:8x}]Encountered a bad instruction (llil)".format(addr))
+            return None
+
+        if instruction is None:
+            return None
 
         ill = insn_il.get(instruction.name, None)
         if ill is None:
@@ -343,7 +368,7 @@ class EVM(Architecture):
 
     def assemble(self, code, addr=0):
         try:
-            return EVMAsm.assemble(code, addr), ''
+            return assemble(code, addr), ''
         except Exception as e:
             return None, e.message
 
@@ -360,7 +385,7 @@ class EVMView(BinaryView):
         rv = []
         offset = data.find('\xa1ebzzr0')
         while offset != -1:
-            print "Adding r-- segment at: {:#x}".format(offset)
+            log_debug("Adding r-- segment at: {:#x}".format(offset))
             rv.append((offset, 43))
             offset = data[offset+1:].find('\xa1ebzzr0')
 
@@ -382,11 +407,22 @@ class EVMView(BinaryView):
 
         swarm_hashes = self.find_swarm_hashes(bytes)
         for start, sz in swarm_hashes:
-            self.add_auto_segment(start - len(EVM_HEADER), sz, start, sz, SegmentFlag.SegmentContainsData | SegmentFlag.SegmentDenyExecute | SegmentFlag.SegmentReadable | SegmentFlag.SegmentDenyWrite)
+            self.add_auto_segment(
+                start - len(EVM_HEADER),
+                sz,
+                start,
+                sz,
+                (
+                    SegmentFlag.SegmentContainsData |
+                    SegmentFlag.SegmentDenyExecute |
+                    SegmentFlag.SegmentReadable |
+                    SegmentFlag.SegmentDenyWrite
+                )
+            )
 
             code -= IntervalSet([Interval(start, start + sz)])
 
-        print "Code Segments: {}".format(code)
+        log_debug("Code Segments: {}".format(code))
 
 
         for interval in code:
@@ -405,14 +441,7 @@ class EVMView(BinaryView):
             )
         )
 
-        invalidJumpCallbackNotification = InvalidJumpCallback()
-        self.register_notification(invalidJumpCallbackNotification)
-
-        dispatcherCallbackNotification = DispatcherCallback()
-        self.register_notification(dispatcherCallbackNotification)
-
-        dynamicJumpCallbackNotification = DynamicJumpCallback()
-        self.register_notification(dynamicJumpCallbackNotification)
+        self.add_analysis_completion_event(analyze_stack_values_callback)
 
         # disable linear sweep
         self.store_metadata(
