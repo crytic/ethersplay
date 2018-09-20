@@ -840,9 +840,15 @@ def stack_value_analysis(view, func):
         sv = StackValueAnalysis(view, func, 100, 10)
         func.session_data['vsa_sv'] = sv
 
-    func.session_data['visited'] = dict()
+    to_explore = []
 
-    sv.explore()
+    while to_explore != func.session_data.get('to_explore'):
+        to_explore = func.session_data.get('to_explore')
+
+        func.session_data['visited'] = dict()
+
+        sv.explore()
+
 
 def stack_value_analysis_plugin(view, func):
     # This is the plugin callback entry. It forces the
