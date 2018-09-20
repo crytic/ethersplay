@@ -424,10 +424,7 @@ class EVMView(BinaryView):
 
     @staticmethod
     def is_valid_for_data(data):
-        file_header = data.read(0, 3)
-        if file_header == EVM_HEADER:
-            return True
-        return False
+        return data.file.original_filename.endswith('.evm')
 
     def is_executable(self):
         return True
