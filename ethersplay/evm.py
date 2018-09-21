@@ -382,7 +382,7 @@ class EVMView(BinaryView):
 
         swarm_hashes = self.find_swarm_hashes(bytes)
         for start, sz in swarm_hashes:
-            self.add_auto_segment(start - len(EVM_HEADER), sz, start, sz, SegmentFlag.SegmentContainsData | SegmentFlag.SegmentDenyExecute | SegmentFlag.SegmentReadable | SegmentFlag.SegmentDenyWrite)
+            self.add_auto_segment(start, sz, start, sz, SegmentFlag.SegmentContainsData | SegmentFlag.SegmentDenyExecute | SegmentFlag.SegmentReadable | SegmentFlag.SegmentDenyWrite)
 
             code -= IntervalSet([Interval(start, start + sz)])
 
@@ -391,8 +391,8 @@ class EVMView(BinaryView):
 
         for interval in code:
             self.add_auto_segment(
-                interval.lower_bound, interval.upper_bound - len(EVM_HEADER),
-                len(EVM_HEADER), interval.upper_bound,
+                interval.lower_bound, interval.upper_bound,
+                interval.lower_bound, interval.upper_bound,
                 (SegmentFlag.SegmentReadable |
                     SegmentFlag.SegmentExecutable)
             )
