@@ -6,13 +6,20 @@
 import itertools
 import sys
 
-import patches  # noqa: F401
-from binaryninja import InstructionTextToken, log_debug, worker_enqueue
-import functools
+from .patches import * # noqa: F401
+from binaryninja import InstructionTextToken, log_debug
+import six
 
 # VSA is heavy in recursion
-sys.setrecursionlimit(15000)
+# sys.setrecursionlimit(15000)
 
+if sys.version_info.major > 2:
+    xrange = range
+
+try:
+    long = long
+except NameError:
+    long = int
 
 class AbsStackElem(object):
     '''
@@ -234,7 +241,7 @@ class Stack(object):
             top = self.top()
             self.push(None)
             missing_elems = n - len(self._elems) + 1
-            for _ in range(0, missing_elems):
+            for _ in xrange(0, missing_elems):
                 self.push(None)
             self._elems[-1-n] = top
 
@@ -758,8 +765,7 @@ class StackValueAnalysis(object):
         '''
             Update the function with new branches
         '''
-        log_debug("[SVA] update_func")
-        for (src, dst) in self.all_discovered_targets.iteritems():
+        for (src, dst) in six.iteritems(self.all_discovered_targets):
             existing_branches = {
                 x.dest_addr
                 for x in self.func.get_indirect_branches_at(src)
@@ -822,7 +828,7 @@ class StackValueAnalysis(object):
             return [True] + [float(x) for x in vals]
 
         stacksOut = {}
-        for k, v in self.stacksOut.iteritems():
+        for k, v in six.iteritems(self.stacksOut):
             elems = v.get_elems()
             elems = [filter_vals(x.get_vals()) for x in elems]
             stacksOut[k] = elems
@@ -832,7 +838,8 @@ class StackValueAnalysis(object):
         self.view.modified = True
 
 
-def stack_value_analysis(view, func):
+def function_dynamic_jump_start(view, func):
+    log_debug('function_dynamic_jump_start begin')
     # This is the BinaryDataNotification callback entry.
     sv = func.session_data.get('vsa_sv')
 
@@ -840,17 +847,12 @@ def stack_value_analysis(view, func):
         sv = StackValueAnalysis(view, func, 100, 10)
         func.session_data['vsa_sv'] = sv
 
-    to_explore = []
-
-    while to_explore != func.session_data.get('to_explore'):
-        to_explore = func.session_data.get('to_explore')
-
-        func.session_data['visited'] = dict()
-
-        sv.explore()
+    sv.explore()
+    log_debug('function_dynamic_jump_start end')
 
 
-def stack_value_analysis_plugin(view, func):
+def function_stack_value_analysis_start(view, func):
+    log_debug('function_stack_value_analysis_start begin')
     # This is the plugin callback entry. It forces the
     # stack value analysis to be re-run.
     sv = func.session_data.get('vsa_sv')
@@ -858,4 +860,5 @@ def stack_value_analysis_plugin(view, func):
     if sv is not None:
         func.session_data['vsa_sv'] = None
 
-    stack_value_analysis(view, func)
+    function_dynamic_jump_start(view, func)
+    log_debug('function_stack_value_analysis_start end')
