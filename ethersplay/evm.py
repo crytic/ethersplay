@@ -1,19 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import functools
-
 from interval import Interval, IntervalSet
-from pyevmasm import assemble, disassemble_all, disassemble_one
+from pyevmasm import assemble, disassemble_one
 
-from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
-                         Endianness, InstructionInfo, InstructionTextToken,
-                         InstructionTextTokenType, LowLevelILLabel,
-                         LowLevelILOperation, RegisterInfo, SegmentFlag,
-                         Symbol, SymbolType, log_debug)
+from binaryninja import (LLIL_TEMP, Architecture, BinaryDataNotification,
+                         BinaryView, BranchType, Endianness, InstructionInfo,
+                         InstructionTextToken, InstructionTextTokenType,
+                         LowLevelILLabel, LowLevelILOperation, RegisterInfo,
+                         SegmentFlag, Symbol, SymbolType, log_debug)
 
-from .analysis import analyze_stack_values_callback
-from .common import ADDR_SIZE, EVM_HEADER
+from .analysis import (VsaNotification, vsa_completion_event)
+from .common import ADDR_SIZE
 
 
 def jumpi(il, addr, imm):
@@ -275,15 +273,9 @@ class EVM(Architecture):
 
     stack_pointer = "sp"
 
-    def get_instruction_info(self, data, addr):
-        try:
-            instruction = disassemble_one(data, addr)
-        except StopIteration:
-            log_debug('[{:08x}] Encountered a bad instruction (info)'.format(addr))
-            return None
 
-        if instruction is None:
-            return None
+    def get_instruction_info(self, data, addr):
+        instruction = disassemble_one(data, addr)
 
         result = InstructionInfo()
         result.length = instruction.size
@@ -298,16 +290,9 @@ class EVM(Architecture):
 
         return result
 
-    def get_instruction_text(self, data, addr):
-        # log_debug('EVM.get_instruction_text(data, 0x{:x})'.format(addr))
-        try:
-            instruction = disassemble_one(data, addr)
-        except StopIteration:
-            log_debug('[{:8x}] Encountered a bad instruction (text)'.format(addr))
-            return None
 
-        if instruction is None:
-            return None
+    def get_instruction_text(self, data, addr):
+        instruction = disassemble_one(data, addr)
 
         tokens = []
         tokens.append(
@@ -333,24 +318,17 @@ class EVM(Architecture):
         return tokens, instruction.size
 
     def get_instruction_low_level_il(self, data, addr, il):
-        try:
-            instruction = disassemble_one(data, addr)
-        except StopIteration:
-            log_debug("[{:8x}]Encountered a bad instruction (llil)".format(addr))
-            return None
-
-        if instruction is None:
-            return None
+        instruction = disassemble_one(data, addr)
 
         ill = insn_il.get(instruction.name, None)
         if ill is None:
 
-            for i in xrange(instruction.pops):
+            for i in range(instruction.pops):
                 il.append(
                     il.set_reg(ADDR_SIZE, LLIL_TEMP(i), il.pop(ADDR_SIZE))
                 )
 
-            for i in xrange(instruction.pushes):
+            for i in range(instruction.pushes):
                 il.append(il.push(ADDR_SIZE, il.unimplemented()))
 
             il.append(il.nop())
@@ -383,29 +361,29 @@ class EVMView(BinaryView):
 
     def find_swarm_hashes(self, data):
         rv = []
-        offset = data.find('\xa1ebzzr0')
+        offset = data.find(b'\xa1ebzzr0')
         while offset != -1:
             log_debug("Adding r-- segment at: {:#x}".format(offset))
             rv.append((offset, 43))
-            offset = data[offset+1:].find('\xa1ebzzr0')
+            offset = data[offset+1:].find(b'\xa1ebzzr0')
 
         return rv
-
 
     def init(self):
         self.arch = Architecture['EVM']
         self.platform = Architecture['EVM'].standalone_platform
         self.add_entry_point(0)
+        self.max_function_size_for_analysis = 1
 
         file_size = len(self.raw)
 
         # Find swarm hashes and make them data
-        bytes = self.raw.read(0, file_size)
+        evm_bytes = self.raw.read(0, file_size)
 
         # code is everything that isn't a swarm hash
         code = IntervalSet([Interval(0, file_size)])
 
-        swarm_hashes = self.find_swarm_hashes(bytes)
+        swarm_hashes = self.find_swarm_hashes(evm_bytes)
         for start, sz in swarm_hashes:
             self.add_auto_segment(start, sz, start, sz, SegmentFlag.SegmentContainsData | SegmentFlag.SegmentDenyExecute | SegmentFlag.SegmentReadable | SegmentFlag.SegmentDenyWrite)
 
@@ -413,8 +391,9 @@ class EVMView(BinaryView):
 
         log_debug("Code Segments: {}".format(code))
 
-
         for interval in code:
+            if isinstance(interval, int):
+                continue
             self.add_auto_segment(
                 interval.lower_bound, interval.upper_bound,
                 interval.lower_bound, interval.upper_bound,
@@ -430,12 +409,15 @@ class EVMView(BinaryView):
             )
         )
 
-        self.add_analysis_completion_event(analyze_stack_values_callback)
+        self.add_analysis_completion_event(vsa_completion_event)
+        self.register_notification(VsaNotification())
 
         # disable linear sweep
         self.store_metadata(
             "ephemeral",
-            {"binaryninja.analysis.autorunLinearSweep": False}
+            {
+                "binaryninja.analysis.autorunLinearSweep": False,
+            }
         )
 
         return True

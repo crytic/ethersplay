@@ -1,5 +1,5 @@
 from bisect import bisect_left
-
+from binaryninja import log_debug
 
 class BNILVisitor(object):
     def __init__(self, **kw):

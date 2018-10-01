@@ -2,7 +2,7 @@
 import os
 from binaryninja.interaction import get_open_filename_input, get_choice_input
 
-from solidityLineNumber import SolidityLineNumber
+from .solidityLineNumber import SolidityLineNumber
 
 
 class PrintSourceCode(object):
