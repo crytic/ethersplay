@@ -43,10 +43,10 @@ def run_vsa(view, function):
         if view.get_function_at(discovered_function._start_addr + 1) is None:
             if discovered_function.hash_id == -1:
                 discovered_function.name = '_fallback'
-
-            h = hex(discovered_function.hash_id)
-            if h in knownHashes:
-                discovered_function.name = knownHashes[h]
+            else:
+                h = hex(discovered_function.hash_id)
+                if h in knownHashes:
+                    discovered_function.name = knownHashes[h]
 
             view.add_function(discovered_function._start_addr + 1)
             new_function = view.get_function_at(
