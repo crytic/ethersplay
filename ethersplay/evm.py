@@ -373,7 +373,7 @@ class EVMView(BinaryView):
         self.arch = Architecture['EVM']
         self.platform = Architecture['EVM'].standalone_platform
         self.add_entry_point(0)
-        self.max_function_size_for_analysis = 1
+        self.max_function_size_for_analysis = 0
 
         file_size = len(self.raw)
 
