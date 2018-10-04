@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from builtins import range
+
 from interval import Interval, IntervalSet
-from pyevmasm import assemble, disassemble_one
 
 from binaryninja import (LLIL_TEMP, Architecture, BinaryDataNotification,
                          BinaryView, BranchType, Endianness, InstructionInfo,
                          InstructionTextToken, InstructionTextTokenType,
                          LowLevelILLabel, LowLevelILOperation, RegisterInfo,
                          SegmentFlag, Symbol, SymbolType, log_debug)
+from pyevmasm import assemble, disassemble_one
 
-from .analysis import (VsaNotification, vsa_completion_event)
+from .analysis import VsaNotification, vsa_completion_event
 from .common import ADDR_SIZE
 
 
