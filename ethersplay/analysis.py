@@ -1,10 +1,10 @@
 import cPickle
 import sys
 
-from binaryninja import (BinaryDataNotification, BranchType,
-                         IntegerDisplayType, MediumLevelILOperation,
-                         SegmentFlag, SSAVariable, Symbol, SymbolType,
-                         log_debug, BackgroundTaskThread, Setting)
+from binaryninja import (BackgroundTaskThread, BinaryDataNotification,
+                         BranchType, IntegerDisplayType,
+                         MediumLevelILOperation, SegmentFlag, Setting,
+                         SSAVariable, Symbol, SymbolType, log_debug)
 from evm_cfg_builder import cfg_builder
 from evm_cfg_builder.cfg import Function as EvmFunction
 from evm_cfg_builder.cfg import compute_instructions, find_functions
@@ -16,13 +16,6 @@ from .common import EVM_HEADER
 from .evmvisitor import EVMVisitor
 from .known_hashes import knownHashes
 
-try:
-    import builtins
-except ImportError:
-    pass
-
-if sys.version_info.major > 2:
-    xrange = range
 
 def run_vsa(view, function):
     try:

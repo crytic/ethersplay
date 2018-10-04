@@ -1,6 +1,6 @@
 from binaryninja.interaction import get_open_filename_input, get_text_line_input
 from binaryninja import HighlightStandardColor
-from binaryninja import log
+from binaryninja import log as logging
 
 blue = HighlightStandardColor.BlueHighlightColor
 
@@ -15,7 +15,7 @@ class GraphColorer(object):
             for line in f:
                 index = line.find(':') + 1
                 addr = line[index:].split()[0]
-                log.log(1, addr)
+                logging.log(1, addr)
                 try:
                     self.color_at(int(addr, 16))
                 except ValueError:
