@@ -16,7 +16,7 @@ from pyevmasm import disassemble_all
 from .evmvisitor import EVMVisitor
 
 
-def run_vsa(view, function):
+def run_vsa(thread, view, function):
     try:
         basic_blocks_as_dict = cPickle.loads(
             view.query_metadata('ethersplay.basic_blocks'))
@@ -30,6 +30,8 @@ def run_vsa(view, function):
         (basic_blocks_as_dict, nodes_as_dict) = create_dicts_from_basic_blocks(
             basic_blocks)
         functions = find_functions(basic_blocks[0], basic_blocks_as_dict, True)
+
+    thread.task.progress = '[VSA] Found Functions'
 
     for discovered_function in functions:
         if view.get_function_at(discovered_function._start_addr + 1) is None:
@@ -45,6 +47,7 @@ def run_vsa(view, function):
             new_function = view.get_function_at(
                 discovered_function._start_addr + 1)
             new_function.name = discovered_function.name
+            thread.task.progress = '[VSA] Created Function {}'.format(new_function.name)
 
     vsa = StackValueAnalysis(
         basic_blocks_as_dict[
@@ -54,6 +57,8 @@ def run_vsa(view, function):
         nodes_as_dict,
         function.name
     )
+
+    thread.task.progress = '[VSA] Analyzing...'
 
     basic_blocks = vsa.analyze()
 
@@ -65,7 +70,11 @@ def run_vsa(view, function):
     ]
     seen = set()
 
+    i = 3
+
     while to_process:
+        thread.task.progress = '[VSA] Processing Basic Blocks{}'.format('.'*i)
+        i += (i + 1) % 4
         basic_block = to_process.pop()
         seen.add(basic_block)
         end = basic_block.end.pc
@@ -144,7 +153,7 @@ class VsaTaskThread(BackgroundTaskThread):
         self.function = function
 
     def run(self):
-        run_vsa(self.view, self.function)
+        run_vsa(self.thread, self.view, self.function)
 
 
 class VsaNotification(BinaryDataNotification):
