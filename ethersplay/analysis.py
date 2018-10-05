@@ -9,12 +9,11 @@ from evm_cfg_builder import cfg_builder
 from evm_cfg_builder.cfg import Function as EvmFunction
 from evm_cfg_builder.cfg import compute_instructions, find_functions
 from evm_cfg_builder.evm_helpers import create_dicts_from_basic_blocks
+from evm_cfg_builder.known_hashes import known_hashes
 from evm_cfg_builder.value_set_analysis import StackValueAnalysis
 from pyevmasm import disassemble_all
 
-from .common import EVM_HEADER
 from .evmvisitor import EVMVisitor
-from .known_hashes import knownHashes
 
 
 def run_vsa(view, function):
@@ -37,9 +36,10 @@ def run_vsa(view, function):
             if discovered_function.hash_id == -1:
                 discovered_function.name = '_fallback'
             else:
-                h = hex(discovered_function.hash_id)
-                if h in knownHashes:
-                    discovered_function.name = knownHashes[h]
+                if discovered_function.hash_id in known_hashes:
+                    discovered_function.name = known_hashes[
+                        discovered_function.hash_id
+                    ]
 
             view.add_function(discovered_function._start_addr + 1)
             new_function = view.get_function_at(
