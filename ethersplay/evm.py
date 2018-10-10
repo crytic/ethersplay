@@ -3,7 +3,7 @@
 
 from builtins import range
 
-from interval import Interval, IntervalSet
+from interval3 import Interval, IntervalSet
 
 from binaryninja import (LLIL_TEMP, Architecture, BinaryDataNotification,
                          BinaryView, BranchType, Endianness, InstructionInfo,
@@ -350,7 +350,7 @@ class EVM(Architecture):
         try:
             return assemble(code, addr), ''
         except Exception as e:
-            return None, e.message
+            return None, str(e)
 
 
 class EVMView(BinaryView):
@@ -387,7 +387,16 @@ class EVMView(BinaryView):
 
         swarm_hashes = self.find_swarm_hashes(evm_bytes)
         for start, sz in swarm_hashes:
-            self.add_auto_segment(start, sz, start, sz, SegmentFlag.SegmentContainsData | SegmentFlag.SegmentDenyExecute | SegmentFlag.SegmentReadable | SegmentFlag.SegmentDenyWrite)
+            self.add_auto_segment(
+                start, sz, 
+                start, sz, 
+                (
+                    SegmentFlag.SegmentContainsData |
+                    SegmentFlag.SegmentDenyExecute |
+                    SegmentFlag.SegmentReadable |
+                    SegmentFlag.SegmentDenyWrite
+                )
+            )
 
             code -= IntervalSet([Interval(start, start + sz)])
 
@@ -399,8 +408,10 @@ class EVMView(BinaryView):
             self.add_auto_segment(
                 interval.lower_bound, interval.upper_bound,
                 interval.lower_bound, interval.upper_bound,
-                (SegmentFlag.SegmentReadable |
-                    SegmentFlag.SegmentExecutable)
+                (
+                    SegmentFlag.SegmentReadable |
+                    SegmentFlag.SegmentExecutable
+                )
             )
 
         self.define_auto_symbol(

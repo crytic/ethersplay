@@ -1,4 +1,8 @@
-import cPickle
+try:
+    import cPickle
+except ImportError:
+    import pickle as cPickle
+
 import sys
 
 from binaryninja import (BackgroundTaskThread, BinaryDataNotification,
@@ -102,9 +106,17 @@ def run_vsa(thread, view, function):
                         ]
                     )
 
-    new_basic_blocks_as_dict = cPickle.dumps(basic_blocks_as_dict)
-    new_nodes_as_dict = cPickle.dumps(nodes_as_dict)
-    new_functions = cPickle.dumps(functions)
+    new_basic_blocks_as_dict = cPickle.dumps(basic_blocks_as_dict, protocol=2)
+    if isinstance(new_basic_blocks_as_dict, bytes):
+        new_basic_blocks_as_dict = new_basic_blocks_as_dict.decode('charmap')
+
+    new_nodes_as_dict = cPickle.dumps(nodes_as_dict, protocol=2)
+    if isinstance(new_nodes_as_dict, bytes):
+        new_nodes_as_dict = new_nodes_as_dict.decode('charmap')
+    
+    new_functions = cPickle.dumps(functions, protocol=2)
+    if isinstance(new_functions, bytes):
+        new_functions = new_functions.decode('charmap')
 
     try:
         if new_basic_blocks_as_dict != view.query_metadata(
