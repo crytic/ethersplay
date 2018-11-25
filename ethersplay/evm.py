@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from builtins import range
+try:
+    from builtins import range
+except ImportError:
+    pass
 
 from interval3 import Interval, IntervalSet
 
 from binaryninja import (LLIL_TEMP, Architecture, BinaryDataNotification,
                          BinaryView, BranchType, Endianness, InstructionInfo,
                          InstructionTextToken, InstructionTextTokenType,
-                         LowLevelILLabel, LowLevelILOperation, RegisterInfo,
-                         SegmentFlag, Symbol, SymbolType, log_debug)
+                         LowLevelILLabel, LowLevelILOperation, RegisterInfo, log_info,
+                         SegmentFlag, Symbol, SymbolType, log_debug, Settings, SettingsScope)
 from pyevmasm import assemble, disassemble_one
 
 from .analysis import VsaNotification, vsa_completion_event
@@ -400,8 +403,6 @@ class EVMView(BinaryView):
 
             code -= IntervalSet([Interval(start, start + sz)])
 
-        log_debug("Code Segments: {}".format(code))
-
         for interval in code:
             if isinstance(interval, int):
                 continue
@@ -426,11 +427,11 @@ class EVMView(BinaryView):
         self.register_notification(VsaNotification())
 
         # disable linear sweep
-        self.store_metadata(
-            "ephemeral",
-            {
-                "binaryninja.analysis.autorunLinearSweep": False,
-            }
+        Settings().set_bool(
+            'analysis.autorunLinearSweep',
+            False,
+            view=self,
+            scope=SettingsScope.SettingsContextScope
         )
 
         return True

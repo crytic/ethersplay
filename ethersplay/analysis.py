@@ -7,12 +7,9 @@ import sys
 
 from binaryninja import (BackgroundTaskThread, BinaryDataNotification,
                          BranchType, IntegerDisplayType,
-                         MediumLevelILOperation, SegmentFlag, Setting,
-                         SSAVariable, Symbol, SymbolType, log_debug)
-from evm_cfg_builder import cfg_builder
-from evm_cfg_builder.cfg import Function as EvmFunction
-from evm_cfg_builder.cfg import compute_instructions, find_functions
-from evm_cfg_builder.evm_helpers import create_dicts_from_basic_blocks
+                         MediumLevelILOperation, SegmentFlag, Settings, SettingsScope,
+                         SSAVariable, Symbol, SymbolType, log_debug, log_info)
+from evm_cfg_builder.cfg import CFG
 from evm_cfg_builder.known_hashes import known_hashes
 from evm_cfg_builder.value_set_analysis import StackValueAnalysis
 from pyevmasm import disassemble_all
@@ -22,22 +19,24 @@ from .evmvisitor import EVMVisitor
 
 def run_vsa(thread, view, function):
     try:
-        basic_blocks_as_dict = cPickle.loads(
+        basic_blocks = cPickle.loads(
             view.query_metadata('ethersplay.basic_blocks'))
-        nodes_as_dict = cPickle.loads(
-            view.query_metadata('ethersplay.instructions'))
+        instructions = cPickle.loads(
+            view.query_metadata('ethersplay.instructions')
+        )
         functions = cPickle.loads(view.query_metadata('ethersplay.functions'))
+
+        data = view.read(view.start, len(view))
+        cfg = CFG(data, instructions, basic_blocks, functions)
     except KeyError:
         data = view.read(view.start, len(view))
-        instructions = disassemble_all(data)
-        basic_blocks = compute_instructions(instructions)
-        (basic_blocks_as_dict, nodes_as_dict) = create_dicts_from_basic_blocks(
-            basic_blocks)
-        functions = find_functions(basic_blocks[0], basic_blocks_as_dict, True)
+        cfg = CFG(data)
+        cfg.compute_basic_blocks()
+        cfg.compute_functions(cfg.basic_blocks[0], True)
 
     thread.task.progress = '[VSA] Found Functions'
 
-    for discovered_function in functions:
+    for discovered_function in cfg.functions:
         if view.get_function_at(discovered_function._start_addr + 1) is None:
             if discovered_function.hash_id == -1:
                 discovered_function.name = '_fallback'
@@ -54,11 +53,10 @@ def run_vsa(thread, view, function):
             thread.task.progress = '[VSA] Created Function {}'.format(new_function.name)
 
     vsa = StackValueAnalysis(
-        basic_blocks_as_dict[
-            function.start - 1 if function.start != 0 else 0
+        cfg,
+        cfg.basic_blocks[
+            (function.start - 1) if function.start != 0 else 0
         ],
-        basic_blocks_as_dict,
-        nodes_as_dict,
         function.name
     )
 
@@ -67,7 +65,7 @@ def run_vsa(thread, view, function):
     basic_blocks = vsa.analyze()
 
     to_process = [
-        basic_blocks_as_dict
+        cfg.basic_blocks
         [
             function.start - 1 if function.start != 0 else 0
         ]
@@ -106,42 +104,42 @@ def run_vsa(thread, view, function):
                         ]
                     )
 
-    new_basic_blocks_as_dict = cPickle.dumps(basic_blocks_as_dict, protocol=2)
-    if isinstance(new_basic_blocks_as_dict, bytes):
-        new_basic_blocks_as_dict = new_basic_blocks_as_dict.decode('charmap')
+    new_basic_blocks = cPickle.dumps(cfg.basic_blocks, protocol=2)
+    if isinstance(new_basic_blocks, bytes):
+        new_basic_blocks = new_basic_blocks.decode('charmap')
 
-    new_nodes_as_dict = cPickle.dumps(nodes_as_dict, protocol=2)
-    if isinstance(new_nodes_as_dict, bytes):
-        new_nodes_as_dict = new_nodes_as_dict.decode('charmap')
+    new_instructions = cPickle.dumps(cfg.instructions, protocol=2)
+    if isinstance(new_instructions, bytes):
+        new_instructions = new_instructions.decode('charmap')
     
-    new_functions = cPickle.dumps(functions, protocol=2)
+    new_functions = cPickle.dumps(cfg.functions, protocol=2)
     if isinstance(new_functions, bytes):
         new_functions = new_functions.decode('charmap')
 
     try:
-        if new_basic_blocks_as_dict != view.query_metadata(
+        if new_basic_blocks != view.query_metadata(
                 'ethersplay.basic_blocks'):
             view.store_metadata(
                 'ethersplay.basic_blocks',
-                new_basic_blocks_as_dict
+                new_basic_blocks
             )
     except KeyError:
         view.store_metadata(
             'ethersplay.basic_blocks',
-            new_basic_blocks_as_dict
+            new_basic_blocks
         )
 
     try:
-        if new_nodes_as_dict != view.query_metadata(
+        if new_instructions != view.query_metadata(
             'ethersplay.instructions'):
             view.store_metadata(
                 'ethersplay.instructions', 
-                new_nodes_as_dict
+                new_instructions
                 )
     except KeyError:
         view.store_metadata(
             'ethersplay.instructions', 
-            new_nodes_as_dict
+            new_instructions
             )
 
     try:
@@ -151,9 +149,9 @@ def run_vsa(thread, view, function):
         view.store_metadata('ethersplay.functions', new_functions)
 
     if function.start == 0:
-        analysis_settings = Setting('analysis')
-        if analysis_settings.is_present('max-function-size'):
-            view.max_function_size_for_analysis = analysis_settings.get_integer('max-function-size')
+        max_function_size, _ = Settings().get_integer_with_scope('analysis.maxFunctionSize', scope=SettingsScope.SettingsDefaultScope)
+        if max_function_size:
+            view.max_function_size_for_analysis = max_function_size
         else:
             view.max_function_size_for_analysis = 65536
 
