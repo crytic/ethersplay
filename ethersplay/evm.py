@@ -10,13 +10,15 @@ from interval3 import Interval, IntervalSet
 
 from binaryninja import (LLIL_TEMP, Architecture, BinaryDataNotification,
                          BinaryView, BranchType, Endianness, InstructionInfo,
-                         InstructionTextToken, InstructionTextTokenType,
+                         InstructionTextToken, InstructionTextTokenType, Function,
                          LowLevelILLabel, LowLevelILOperation, RegisterInfo, log_info,
                          SegmentFlag, Symbol, SymbolType, log_debug, Settings, SettingsScope)
+from binaryninja.function import _FunctionAssociatedDataStore
 from pyevmasm import assemble, disassemble_one
 
-from .analysis import VsaNotification, vsa_completion_event
+from .analysis import VsaNotification
 from .common import ADDR_SIZE
+from evm_cfg_builder.cfg import CFG
 
 
 def jumpi(il, addr, imm):
@@ -52,7 +54,7 @@ def jumpi(il, addr, imm):
     il.append(il.if_expr(il.reg(ADDR_SIZE, LLIL_TEMP(0)), t, f))
 
     il.mark_label(t)
-    il.append(il.jump(il.unimplemented()))#il.reg(ADDR_SIZE, LLIL_TEMP(1))))
+    il.append(il.jump(il.unimplemented()))  # il.reg(ADDR_SIZE, LLIL_TEMP(1))))
 
     if must_mark:
         il.mark_label(f)
@@ -160,100 +162,100 @@ def mstore(il, addr, imm):
 
 
 insn_il = {
-        'AND': lambda il, addr, imm: il.push(
-            ADDR_SIZE, il.and_expr(
-                ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
-            )
-        ),
-        'EQ': lambda il, addr, imm: il.push(
-            ADDR_SIZE, il.compare_equal(
-                ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
-            )
-        ),
-        'LT': lambda il, addr, imm: il.push(
-            ADDR_SIZE, il.compare_unsigned_less_than(
-                ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
-            )
-        ),
-        'ISZERO': lambda il, addr, imm: il.push(
-            ADDR_SIZE, il.compare_equal(
-                ADDR_SIZE, il.pop(ADDR_SIZE), il.const(ADDR_SIZE, 0)
-            )
-        ),
-        'POP': lambda il, addr, imm: il.pop(ADDR_SIZE),
-        'MSTORE': mstore,
-        'JUMP': jump,
-        'JUMPI': jumpi,
-        'PUSH1':  push,
-        'PUSH2':  push,
-        'PUSH3':  push,
-        'PUSH4':  push,
-        'PUSH5':  push,
-        'PUSH6':  push,
-        'PUSH7':  push,
-        'PUSH8':  push,
-        'PUSH9':  push,
-        'PUSH10': push,
-        'PUSH11': push,
-        'PUSH12': push,
-        'PUSH13': push,
-        'PUSH14': push,
-        'PUSH15': push,
-        'PUSH16': push,
-        'PUSH17': push,
-        'PUSH18': push,
-        'PUSH19': push,
-        'PUSH20': push,
-        'PUSH21': push,
-        'PUSH22': push,
-        'PUSH23': push,
-        'PUSH24': push,
-        'PUSH25': push,
-        'PUSH26': push,
-        'PUSH27': push,
-        'PUSH28': push,
-        'PUSH29': push,
-        'PUSH30': push,
-        'PUSH31': push,
-        'PUSH32': push,
-        'DUP1': lambda il, addr, imm: dup(il, addr, 1),
-        'DUP2': lambda il, addr, imm: dup(il, addr, 2),
-        'DUP3': lambda il, addr, imm: dup(il, addr, 3),
-        'DUP4': lambda il, addr, imm: dup(il, addr, 4),
-        'DUP5': lambda il, addr, imm: dup(il, addr, 5),
-        'DUP6': lambda il, addr, imm: dup(il, addr, 6),
-        'DUP7': lambda il, addr, imm: dup(il, addr, 7),
-        'DUP8': lambda il, addr, imm: dup(il, addr, 8),
-        'DUP9': lambda il, addr, imm: dup(il, addr, 9),
-        'DUP10': lambda il, addr, imm: dup(il, addr, 10),
-        'DUP11': lambda il, addr, imm: dup(il, addr, 11),
-        'DUP12': lambda il, addr, imm: dup(il, addr, 12),
-        'DUP13': lambda il, addr, imm: dup(il, addr, 13),
-        'DUP14': lambda il, addr, imm: dup(il, addr, 14),
-        'DUP15': lambda il, addr, imm: dup(il, addr, 15),
-        'DUP16': lambda il, addr, imm: dup(il, addr, 16),
-        'SWAP1': lambda il, addr, imm: swap(il, addr, 1),
-        'SWAP2': lambda il, addr, imm: swap(il, addr, 2),
-        'SWAP3': lambda il, addr, imm: swap(il, addr, 3),
-        'SWAP4': lambda il, addr, imm: swap(il, addr, 4),
-        'SWAP5': lambda il, addr, imm: swap(il, addr, 5),
-        'SWAP6': lambda il, addr, imm: swap(il, addr, 6),
-        'SWAP7': lambda il, addr, imm: swap(il, addr, 7),
-        'SWAP8': lambda il, addr, imm: swap(il, addr, 8),
-        'SWAP9': lambda il, addr, imm: swap(il, addr, 9),
-        'SWAP10': lambda il, addr, imm: swap(il, addr, 10),
-        'SWAP11': lambda il, addr, imm: swap(il, addr, 11),
-        'SWAP12': lambda il, addr, imm: swap(il, addr, 12),
-        'SWAP13': lambda il, addr, imm: swap(il, addr, 13),
-        'SWAP14': lambda il, addr, imm: swap(il, addr, 14),
-        'SWAP15': lambda il, addr, imm: swap(il, addr, 15),
-        'SWAP16': lambda il, addr, imm: swap(il, addr, 16),
-        'STOP': lambda il, addr, imm: il.no_ret(),
-        'REVERT': lambda il, addr, imm: il.no_ret(),
-        'RETURN': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
-        'INVALID': lambda il, addr, imm: il.no_ret(),
-        'SUICIDE': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
-        'SELFDESTRUCT': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
+    'AND': lambda il, addr, imm: il.push(
+        ADDR_SIZE, il.and_expr(
+            ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
+        )
+    ),
+    'EQ': lambda il, addr, imm: il.push(
+        ADDR_SIZE, il.compare_equal(
+            ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
+        )
+    ),
+    'LT': lambda il, addr, imm: il.push(
+        ADDR_SIZE, il.compare_unsigned_less_than(
+            ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
+        )
+    ),
+    'ISZERO': lambda il, addr, imm: il.push(
+        ADDR_SIZE, il.compare_equal(
+            ADDR_SIZE, il.pop(ADDR_SIZE), il.const(ADDR_SIZE, 0)
+        )
+    ),
+    'POP': lambda il, addr, imm: il.pop(ADDR_SIZE),
+    'MSTORE': mstore,
+    'JUMP': jump,
+    'JUMPI': jumpi,
+    'PUSH1':  push,
+    'PUSH2':  push,
+    'PUSH3':  push,
+    'PUSH4':  push,
+    'PUSH5':  push,
+    'PUSH6':  push,
+    'PUSH7':  push,
+    'PUSH8':  push,
+    'PUSH9':  push,
+    'PUSH10': push,
+    'PUSH11': push,
+    'PUSH12': push,
+    'PUSH13': push,
+    'PUSH14': push,
+    'PUSH15': push,
+    'PUSH16': push,
+    'PUSH17': push,
+    'PUSH18': push,
+    'PUSH19': push,
+    'PUSH20': push,
+    'PUSH21': push,
+    'PUSH22': push,
+    'PUSH23': push,
+    'PUSH24': push,
+    'PUSH25': push,
+    'PUSH26': push,
+    'PUSH27': push,
+    'PUSH28': push,
+    'PUSH29': push,
+    'PUSH30': push,
+    'PUSH31': push,
+    'PUSH32': push,
+    'DUP1': lambda il, addr, imm: dup(il, addr, 1),
+    'DUP2': lambda il, addr, imm: dup(il, addr, 2),
+    'DUP3': lambda il, addr, imm: dup(il, addr, 3),
+    'DUP4': lambda il, addr, imm: dup(il, addr, 4),
+    'DUP5': lambda il, addr, imm: dup(il, addr, 5),
+    'DUP6': lambda il, addr, imm: dup(il, addr, 6),
+    'DUP7': lambda il, addr, imm: dup(il, addr, 7),
+    'DUP8': lambda il, addr, imm: dup(il, addr, 8),
+    'DUP9': lambda il, addr, imm: dup(il, addr, 9),
+    'DUP10': lambda il, addr, imm: dup(il, addr, 10),
+    'DUP11': lambda il, addr, imm: dup(il, addr, 11),
+    'DUP12': lambda il, addr, imm: dup(il, addr, 12),
+    'DUP13': lambda il, addr, imm: dup(il, addr, 13),
+    'DUP14': lambda il, addr, imm: dup(il, addr, 14),
+    'DUP15': lambda il, addr, imm: dup(il, addr, 15),
+    'DUP16': lambda il, addr, imm: dup(il, addr, 16),
+    'SWAP1': lambda il, addr, imm: swap(il, addr, 1),
+    'SWAP2': lambda il, addr, imm: swap(il, addr, 2),
+    'SWAP3': lambda il, addr, imm: swap(il, addr, 3),
+    'SWAP4': lambda il, addr, imm: swap(il, addr, 4),
+    'SWAP5': lambda il, addr, imm: swap(il, addr, 5),
+    'SWAP6': lambda il, addr, imm: swap(il, addr, 6),
+    'SWAP7': lambda il, addr, imm: swap(il, addr, 7),
+    'SWAP8': lambda il, addr, imm: swap(il, addr, 8),
+    'SWAP9': lambda il, addr, imm: swap(il, addr, 9),
+    'SWAP10': lambda il, addr, imm: swap(il, addr, 10),
+    'SWAP11': lambda il, addr, imm: swap(il, addr, 11),
+    'SWAP12': lambda il, addr, imm: swap(il, addr, 12),
+    'SWAP13': lambda il, addr, imm: swap(il, addr, 13),
+    'SWAP14': lambda il, addr, imm: swap(il, addr, 14),
+    'SWAP15': lambda il, addr, imm: swap(il, addr, 15),
+    'SWAP16': lambda il, addr, imm: swap(il, addr, 16),
+    'STOP': lambda il, addr, imm: il.no_ret(),
+    'REVERT': lambda il, addr, imm: il.no_ret(),
+    'RETURN': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
+    'INVALID': lambda il, addr, imm: il.no_ret(),
+    'SUICIDE': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
+    'SELFDESTRUCT': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
 }
 
 
@@ -278,7 +280,6 @@ class EVM(Architecture):
 
     stack_pointer = "sp"
 
-
     def get_instruction_info(self, data, addr):
         instruction = disassemble_one(data, addr)
 
@@ -294,7 +295,6 @@ class EVM(Architecture):
             result.add_branch(BranchType.FunctionReturn)
 
         return result
-
 
     def get_instruction_text(self, data, addr):
         instruction = disassemble_one(data, addr)
@@ -377,7 +377,6 @@ class EVMView(BinaryView):
     def init(self):
         self.arch = Architecture['EVM']
         self.platform = Architecture['EVM'].standalone_platform
-        self.add_entry_point(0)
         self.max_function_size_for_analysis = 0
 
         file_size = len(self.raw)
@@ -391,8 +390,8 @@ class EVMView(BinaryView):
         swarm_hashes = self.find_swarm_hashes(evm_bytes)
         for start, sz in swarm_hashes:
             self.add_auto_segment(
-                start, sz, 
-                start, sz, 
+                start, sz,
+                start, sz,
                 (
                     SegmentFlag.SegmentContainsData |
                     SegmentFlag.SegmentDenyExecute |
@@ -415,20 +414,30 @@ class EVMView(BinaryView):
                 )
             )
 
-        self.define_auto_symbol(
-            Symbol(
-                SymbolType.FunctionSymbol,
-                0,
-                '_dispatcher'
-            )
-        )
+        cfg = CFG(evm_bytes)
+        Function.set_default_session_data('cfg', cfg)
 
-        self.add_analysis_completion_event(vsa_completion_event)
         self.register_notification(VsaNotification())
+
+        self.add_entry_point(0)
+
+        for function in cfg.functions.values():
+            function_start = (function._start_addr + 1
+                              if function._start_addr != 0 else 0)
+
+            self.define_auto_symbol(
+                Symbol(
+                    SymbolType.FunctionSymbol,
+                    function_start,
+                    function.name
+                )
+            )
+
+            self.add_function(function_start)
 
         # disable linear sweep
         Settings().set_bool(
-            'analysis.autorunLinearSweep',
+            'analysis.linearSweep.autorun',
             False,
             view=self,
             scope=SettingsScope.SettingsContextScope

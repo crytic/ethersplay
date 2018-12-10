@@ -1,11 +1,15 @@
 from binaryninja import BranchType, FlowGraph, FlowGraphNode, InstructionTextTokenType, DisassemblyTextLine
 
+_graphs = list()
+
 def render_flowgraphs(view):
+    global _graphs
     for function in view.functions:
         g = function.create_graph()
         g.layout_and_wait()
 
         f = FlowGraph()
+        _graphs.append(f)
         f.function = function
         f_bbs = {}
 
