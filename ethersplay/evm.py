@@ -421,7 +421,7 @@ class EVMView(BinaryView):
 
         self.add_entry_point(0)
 
-        for function in cfg.functions.values():
+        for function in cfg.functions:
             function_start = (function._start_addr + 1
                               if function._start_addr != 0 else 0)
 

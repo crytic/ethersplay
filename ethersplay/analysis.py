@@ -14,19 +14,21 @@ from evm_cfg_builder.value_set_analysis import StackValueAnalysis
 
 from .evmvisitor import EVMVisitor
 
-rlock = threading.RLock()
 
 def run_vsa(thread, view, function):
     cfg = function.session_data.cfg
-    hash_id = cfg.functions[function.start - 1 if function.start != 0 else 0].hash_id
+    cfg_function = cfg.get_function_at(
+        function.start - 1 if function.start != 0 else 0
+    )
+    hash_id = cfg_function.hash_id
 
     thread.task.progress = '[VSA] Analyzing...'
 
     to_process = [
-        cfg.basic_blocks_from_addr
-        [
+        cfg.get_basic_block_at
+        (
             function.start - 1 if function.start != 0 else 0
-        ]
+        )
     ]
 
     seen = set()
@@ -65,11 +67,13 @@ def run_vsa(thread, view, function):
                     )
 
     if function.start == 0:
-        max_function_size, _ = Settings().get_integer_with_scope('analysis.maxFunctionSize', scope=SettingsScope.SettingsDefaultScope)
+        max_function_size, _ = Settings().get_integer_with_scope(
+            'analysis.maxFunctionSize', scope=SettingsScope.SettingsDefaultScope)
         if max_function_size:
             view.max_function_size_for_analysis = max_function_size
         else:
             view.max_function_size_for_analysis = 65536
+
 
 class VsaTaskThread(BackgroundTaskThread):
     def __init__(self, status, view, function):
