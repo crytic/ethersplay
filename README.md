@@ -10,6 +10,8 @@ Binary Ninja plugin which enables an EVM disassembler and related analysis tools
 - [Known issues](#known-issues)
 
 ## Installation
+Ethersplay supports python >= 3.6.
+
 Install the dependencies:
 ```console
 $ pip install -r requirements.txt
