@@ -9,8 +9,6 @@ from binaryninja import (BackgroundTaskThread, BinaryDataNotification,
                          SettingsScope, SSAVariable, Symbol, SymbolType,
                          log_debug, log_info)
 from evm_cfg_builder.cfg import CFG
-from evm_cfg_builder.known_hashes import known_hashes
-from evm_cfg_builder.value_set_analysis import StackValueAnalysis
 
 from .evmvisitor import EVMVisitor
 
