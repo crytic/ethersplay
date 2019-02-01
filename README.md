@@ -78,10 +78,10 @@ Copy the ascii hex string, and then create a new file in Binary Ninja. Right-cli
 Generates a clean control flow graph of all functions.
 
 Before:
-[!img](images/cfg_before.png)
+![before](images/cfg_before.png)
 
 After:
-[!img](images/cfg_after.png)
+![!after](images/cfg_after.png)
 
 ### Manticore coverage
 Colors the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
