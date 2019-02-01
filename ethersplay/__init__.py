@@ -1,8 +1,6 @@
 from binaryninja import PluginCommand, Architecture
 
-from .printSourceCode import function_source_code_start
 from .coverage import function_coverage_start
-from .print_stack import function_printStack_start
 from .evm import EVM, EVMView
 from .flowgraph import render_flowgraphs
 
