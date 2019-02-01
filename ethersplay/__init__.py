@@ -12,23 +12,9 @@ def is_valid_evm(view, function=None):
 
 
 PluginCommand.register(
-    r"Ethersplay\Source Code",
-    "EVM Source Code Printer.",
-    function_source_code_start,
-    is_valid=is_valid_evm
-)
-
-PluginCommand.register(
     r"Ethersplay\Manticore Highlight",
     "EVM Manticore Highlight",
     function_coverage_start,
-    is_valid=is_valid_evm
-)
-
-PluginCommand.register_for_function(
-    r"Ethersplay\Print stack",
-    "Print up to 10 values of the stack",
-    function_printStack_start,
     is_valid=is_valid_evm
 )
 

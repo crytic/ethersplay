@@ -10,7 +10,9 @@ Binary Ninja plugin which enables an EVM disassembler and related analysis tools
 - [Known issues](#known-issues)
 
 ## Installation
-Ethersplay supports python >= 3.6.
+**Ethersplay only supports Python >= 3.6.**
+
+Ensure that your Binary Ninja's Python library is set to Python 3.6+. You can change the ScriptingProvider in the Advanced Settings.
 
 Install the dependencies:
 ```console
@@ -70,32 +72,16 @@ Copy the ascii hex string, and then create a new file in Binary Ninja. Right-cli
 
 **Note:** The file must end in `.evm` to be recognized as an EVM bytecode binary file.
 
-## Automatic analyses
-
-These analyses are launched automatically once a bytecode is loaded:
-
-- `EVM Dynamic Jump`: Compute the targets of dynamic jumps.
-- `EVM Known Hashes`: Look for known method ID hashes.
-- `EVM Create Methods`: Split the contract into methods.
-
 ## Plugins
 
-### EVM Print Stack
-Add the possible stack values as comments to the code, if it has been calculated by the value-set analysis.
+### Render Flowgraphs
+Generates a clean control flow graph of all functions.
 
-### EVM Source Code
+Before:
+[!img](images/cfg_before.png)
 
-Match the solidity source code to the EVM bytecode.
-The plugin needs the asm json representation source code, created using:
-```
-solc --asm-json examples/test.sol > examples/test.asm.json
-```
-The source code file has to be in the same directory than the `*.asm.json` file.
+After:
+[!img](images/cfg_after.png)
 
 ### Manticore coverage
-Color the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
-
-## Known issues
-- The `EVM Stack Value Analysis` plugin command does not work on EVM code that is not in an `EVMView` `BinaryView`.
-- Analysis hangs on malformed binary files.
-- `EVM Source Code` was tested with solc 0.4.16. It is not compatible with other versions.
+Colors the basic blocks explored through Manticore (using the `visited.txt` or `*.trace` files).
