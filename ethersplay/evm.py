@@ -440,7 +440,7 @@ class EVMView(BinaryView):
             'analysis.linearSweep.autorun',
             False,
             view=self,
-            scope=SettingsScope.SettingsContextScope
+            scope=SettingsScope.SettingsResourceScope
         )
 
         return True
