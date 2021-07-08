@@ -66,7 +66,7 @@ def run_vsa(thread, view, function):
 
     if function.start == 0:
         max_function_size, _ = Settings().get_integer_with_scope(
-            'analysis.maxFunctionSize', scope=SettingsScope.SettingsDefaultScope)
+            'analysis.limits.maxFunctionSize', scope=SettingsScope.SettingsDefaultScope)
         if max_function_size:
             view.max_function_size_for_analysis = max_function_size
         else:
