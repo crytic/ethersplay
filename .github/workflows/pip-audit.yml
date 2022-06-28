@@ -1,0 +1,29 @@
+name: Scan dependencies for vulnerabilities with pip-audit
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    - cron: "0 12 * * *"
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          # IMPORTANT: You may need a more specific version here.
+          python-version: "3.x"
+
+      - name: Run pip-audit
+        uses: trailofbits/gh-action-pip-audit@v0.0.4
+        with:
+          inputs: requirements.txt
+
