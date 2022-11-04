@@ -1,7 +1,7 @@
 # ethersplay
 Binary Ninja plugin which enables an EVM disassembler and related analysis tools.
 
-![Example](/images/example.png)
+![Example](images/example.png)
 
 - [Installation](#installation)
 - [How to use](#how-to-use)
@@ -13,6 +13,12 @@ Binary Ninja plugin which enables an EVM disassembler and related analysis tools
 **Ethersplay only supports Python >= 3.6.**
 
 Ensure that your Binary Ninja's Python library is set to Python 3.6+. You can change the ScriptingProvider in the Advanced Settings.
+
+### Plugin Manager Installation
+
+If you install the plugin via the Binary Ninja Plugin Manager, dependency installation should be automatic.
+
+### Manual Installation
 
 Install the dependencies:
 ```console
@@ -78,9 +84,11 @@ Copy the ascii hex string, and then create a new file in Binary Ninja. Right-cli
 Generates a clean control flow graph of all functions.
 
 Before:
+
 ![before](images/cfg_before.png)
 
 After:
+
 ![!after](images/cfg_after.png)
 
 ### Manticore coverage
