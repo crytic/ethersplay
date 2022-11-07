@@ -23,7 +23,7 @@ jobs:
           python-version: "3.x"
 
       - name: Run pip-audit
-        uses: pypa/gh-action-pip-audit@v1.0.0
+        uses: pypa/gh-action-pip-audit@v1.0.1
         with:
           inputs: requirements.txt
 
